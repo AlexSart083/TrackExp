@@ -308,7 +308,7 @@ def login_form():
     """Form di login/registrazione con sicurezza migliorata"""
     st.title("🔐 Accesso Sicuro - Gestione Spese Mensili")
     
-    tab1, tab2 = st.tabs(["🔑 Login", "📝 Registrazione")
+    tab1, tab2 = st.tabs("🔑 Login", "📝 Registrazione")
     
     with tab1:
         st.subheader("Accedi al tuo account")
