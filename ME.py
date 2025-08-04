@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import json
 import os
+import hashlib
 from datetime import datetime, date
 import calendar
 import plotly.express as px
@@ -14,10 +15,118 @@ st.set_page_config(
     layout="wide"
 )
 
-# File per il salvataggio dei dati
-DATA_FILE = "spese_data.json"
+# Funzioni di autenticazione
+def hash_password(password):
+    """Hash della password usando SHA256"""
+    return hashlib.sha256(password.encode()).hexdigest()
+
+def get_user_data_file(username):
+    """Genera il nome del file dati specifico per utente"""
+    return f"spese_data_{username}.json"
+
+def authenticate_user(username, password):
+    """Autentica l'utente"""
+    users_file = "users.json"
+    
+    # Se il file utenti non esiste, crealo vuoto
+    if not os.path.exists(users_file):
+        with open(users_file, 'w') as f:
+            json.dump({}, f)
+        return False
+    
+    try:
+        with open(users_file, 'r') as f:
+            users = json.load(f)
+        
+        if username in users:
+            return users[username] == hash_password(password)
+        return False
+    except:
+        return False
+
+def register_user(username, password):
+    """Registra un nuovo utente"""
+    users_file = "users.json"
+    
+    # Carica utenti esistenti
+    if os.path.exists(users_file):
+        with open(users_file, 'r') as f:
+            users = json.load(f)
+    else:
+        users = {}
+    
+    # Controlla se l'utente esiste già
+    if username in users:
+        return False, "Username già esistente"
+    
+    # Aggiungi nuovo utente
+    users[username] = hash_password(password)
+    
+    try:
+        with open(users_file, 'w') as f:
+            json.dump(users, f)
+        return True, "Utente registrato con successo"
+    except:
+        return False, "Errore durante la registrazione"
+
+def login_form():
+    """Form di login/registrazione"""
+    st.title("🔐 Accesso - Gestione Spese Mensili")
+    
+    tab1, tab2 = st.tabs(["Login", "Registrazione"])
+    
+    with tab1:
+        st.subheader("Accedi al tuo account")
+        with st.form("login_form"):
+            username = st.text_input("Username")
+            password = st.text_input("Password", type="password")
+            login_submitted = st.form_submit_button("Accedi")
+            
+            if login_submitted:
+                if username and password:
+                    if authenticate_user(username, password):
+                        st.session_state.authenticated = True
+                        st.session_state.username = username
+                        st.success("Login effettuato con successo!")
+                        st.rerun()
+                    else:
+                        st.error("Username o password non corretti")
+                else:
+                    st.error("Inserisci username e password")
+    
+    with tab2:
+        st.subheader("Crea un nuovo account")
+        with st.form("register_form"):
+            new_username = st.text_input("Nuovo Username")
+            new_password = st.text_input("Nuova Password", type="password")
+            confirm_password = st.text_input("Conferma Password", type="password")
+            register_submitted = st.form_submit_button("Registrati")
+            
+            if register_submitted:
+                if new_username and new_password and confirm_password:
+                    if new_password == confirm_password:
+                        if len(new_password) >= 6:
+                            success, message = register_user(new_username, new_password)
+                            if success:
+                                st.success(message)
+                                st.info("Ora puoi effettuare il login con le tue credenziali")
+                            else:
+                                st.error(message)
+                        else:
+                            st.error("La password deve essere di almeno 6 caratteri")
+                    else:
+                        st.error("Le password non coincidono")
+                else:
+                    st.error("Compila tutti i campi")
+    
+    st.markdown("---")
+    st.info("💡 **Informazioni:**\n- I tuoi dati sono privati e isolati dagli altri utenti\n- Ogni utente ha accesso solo ai propri dati\n- Crea un account per iniziare a tracciare le tue spese")
 
 # Inizializzazione dello stato della sessione
+if 'authenticated' not in st.session_state:
+    st.session_state.authenticated = False
+if 'username' not in st.session_state:
+    st.session_state.username = None
 if 'spese_giornaliere' not in st.session_state:
     st.session_state.spese_giornaliere = []
 if 'spese_ricorrenti' not in st.session_state:
@@ -25,9 +134,17 @@ if 'spese_ricorrenti' not in st.session_state:
 if 'current_page' not in st.session_state:
     st.session_state.current_page = "dashboard"
 
-# Funzioni per il salvataggio e caricamento dei dati
+# Se non autenticato, mostra il form di login
+if not st.session_state.authenticated:
+    login_form()
+    st.stop()
+
+# Se arrivati qui, l'utente è autenticato
+DATA_FILE = get_user_data_file(st.session_state.username)
+
+# Funzioni per il salvataggio e caricamento dei dati (specifiche per utente)
 def salva_dati():
-    """Salva i dati in un file JSON"""
+    """Salva i dati in un file JSON specifico per utente"""
     data = {
         'spese_giornaliere': st.session_state.spese_giornaliere,
         'spese_ricorrenti': st.session_state.spese_ricorrenti
@@ -125,11 +242,23 @@ def reset_form_fields():
     if 'form_importo' in st.session_state:
         st.session_state.form_importo = 0.01
 
-# Carica i dati all'avvio
+# Carica i dati all'avvio (specifici per utente)
 carica_dati()
 
-# Titolo principale
-st.title("💰 Gestione Spese Mensili")
+# Header con info utente e logout
+col1, col2, col3 = st.columns([3, 1, 1])
+with col1:
+    st.title("💰 Gestione Spese Mensili")
+with col2:
+    st.write(f"👤 **{st.session_state.username}**")
+with col3:
+    if st.button("🚪 Logout"):
+        st.session_state.authenticated = False
+        st.session_state.username = None
+        st.session_state.spese_giornaliere = []
+        st.session_state.spese_ricorrenti = []
+        st.session_state.current_page = "dashboard"
+        st.rerun()
 
 # DASHBOARD (ex Resoconto Mensile)
 if st.session_state.current_page == "dashboard":
@@ -410,8 +539,9 @@ elif st.session_state.current_page == "gestisci_spese":
         else:
             st.info("Nessuna spesa ricorrente registrata.")
 
-# Sidebar con funzioni di backup
+# Sidebar con funzioni di backup (specifiche per utente)
 st.sidebar.title("💾 Backup & Restore")
+st.sidebar.write(f"👤 **Utente:** {st.session_state.username}")
 
 # Download backup
 if st.sidebar.button("📥 Scarica Backup"):
@@ -420,7 +550,7 @@ if st.sidebar.button("📥 Scarica Backup"):
             st.sidebar.download_button(
                 label="Download JSON",
                 data=f.read(),
-                file_name=f"backup_spese_{datetime.now().strftime('%Y%m%d')}.json",
+                file_name=f"backup_spese_{st.session_state.username}_{datetime.now().strftime('%Y%m%d')}.json",
                 mime="application/json"
             )
     else:
@@ -440,7 +570,7 @@ if uploaded_file is not None:
             st.sidebar.error("❌ Errore nel ripristino del backup!")
 
 st.sidebar.markdown("---")
-st.sidebar.markdown("💡 **Suggerimenti:**")
-st.sidebar.markdown("• Fai backup regolari dei tuoi dati")
-st.sidebar.markdown("• I dati vengono salvati automaticamente")
-st.sidebar.markdown(f"• File corrente: {DATA_FILE}")
+st.sidebar.markdown("🔒 **Sicurezza:**")
+st.sidebar.markdown("• I tuoi dati sono privati")
+st.sidebar.markdown("• File personale isolato")
+st.sidebar.markdown(f"• File: spese_data_{st.session_state.username}.json")
