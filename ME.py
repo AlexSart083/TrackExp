@@ -15,7 +15,7 @@ import re
 # Configurazione della pagina
 st.set_page_config(
     page_title="Gestione Spese Mensili",
-    page_icon="💰",
+    page_icon="💸",
     layout="wide"
 )
 
@@ -554,7 +554,7 @@ carica_dati()
 # Header con info utente sicuro e logout
 col1, col2, col3, col4 = st.columns([2, 1, 1, 1])
 with col1:
-    st.title("💰 Gestione Spese Mensili")
+    st.title("💸 Gestione Spese Mensili")
 with col2:
     display_name = st.session_state.display_username or st.session_state.username
     st.write(f"👤 **{display_name}**")
@@ -889,4 +889,4 @@ st.sidebar.markdown("🔒 **Sicurezza:**")
 st.sidebar.markdown("• I tuoi dati sono privati")
 st.sidebar.markdown("• File personale isolato")
 st.sidebar.markdown(f"• File: spese_data_{st.session_state.username}.json")
-st.markdown("<p style='text-align: center; color: gray;'>Created by AS with the supervision of KIM</p>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center; color: gray;'>Created by AS with the supervision of KIM😼</p>", unsafe_allow_html=True)
