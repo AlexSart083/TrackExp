@@ -309,16 +309,17 @@ def show_privacy_disclaimer():
     st.info("""
     🔒 **INFORMATIVA PRIVACY**
     
-    Questa è un'applicazione di gestione spese **completamente locale e privata**:
+    **Privacy e sicurezza dei tuoi dati finanziari:**
     
-    • ✅ **Nessuna informazione personale** viene raccolta, trasmessa o salvata su server esterni
-    • ✅ **Tutti i dati rimangono sul tuo dispositivo** locale nella cartella "secure_data"
-    • ✅ **Non viene effettuato alcun tracking** o monitoraggio delle tue attività
-    • ✅ **Non vengono utilizzati cookie** di profilazione o analytics
-    • ✅ **Le password sono crittografate** con algoritmi di sicurezza avanzati (PBKDF2)
-    • ✅ **Ogni utente ha file separati** e completamente isolati
+    • ✅ **Noi sviluppatori NON raccogliamo** le tue informazioni personali o finanziarie
+    • ✅ **NON condividiamo** i tuoi dati con terze parti
+    • ✅ **Password crittografate** con algoritmi di sicurezza avanzati (PBKDF2)  
+    • ✅ **File separati per utente** - isolamento completo tra account
+    • ✅ **Nessun tracking comportamentale** da parte nostra
     
-    I tuoi dati finanziari e personali sono **completamente privati e sicuri**.
+    ⚠️ **Importante**: Questa app è ospitata su Streamlit Cloud. I dati vengono salvati sui server di Streamlit/Snowflake secondo le loro politiche di privacy.
+    
+    📋 **Raccomandazione**: Per dati estremamente sensibili, considera di scaricare il codice e usarlo localmente.
     """)
 
 def login_form():
@@ -588,29 +589,24 @@ if st.session_state.current_page == "privacy_info":
     st.success("""
     ## 🔒 PRIVACY E SICUREZZA DEI TUOI DATI
     
-    Questa applicazione è stata progettata con la **massima attenzione alla privacy** e alla sicurezza dei tuoi dati personali e finanziari.
+    **Cosa garantiamo noi sviluppatori** riguardo alla privacy dei tuoi dati finanziari.
     """)
     
     col1, col2 = st.columns(2)
     
     with col1:
         st.markdown("""
-        ### ✅ **COSA GARANTIAMO:**
+        ### ✅ **LE NOSTRE GARANZIE:**
         
-        🏠 **Dati completamente locali**
-        • Tutti i dati rimangono sul tuo dispositivo
-        • Nessuna trasmissione verso server esterni
-        • Nessun cloud storage involontario
+        🚫 **Zero raccolta dati da parte nostra**
+        • Non raccogliamo informazioni personali
+        • Non monitoriamo le tue attività finanziarie
+        • Non condividiamo dati con terze parti
         
-        🔐 **Sicurezza avanzata**
+        🔐 **Sicurezza implementata**
         • Password crittografate con PBKDF2
         • Salt univoci per ogni utente
         • Isolamento completo tra utenti
-        
-        🚫 **Zero tracking**
-        • Nessun cookie di profilazione
-        • Nessuna raccolta di analytics
-        • Nessun monitoraggio comportamentale
         
         📁 **File separati per utente**
         • Ogni utente ha file completamente isolati
@@ -620,59 +616,55 @@ if st.session_state.current_page == "privacy_info":
     
     with col2:
         st.markdown("""
-        ### 🛡️ **DETTAGLI TECNICI:**
+        ### ⚠️ **IMPORTANTE - STREAMLIT CLOUD:**
         
-        📂 **Struttura dei file:**
-        ```
-        secure_data/
-        ├── users_secure.json (solo hash password)
-        ├── login_attempts.json (sicurezza)
-        └── spese_data_[username].json (i tuoi dati)
-        ```
+        📍 **Hosting esterno:**
+        • App ospitata sui server Streamlit/Snowflake
+        • I dati vengono salvati sui loro server
+        • Soggetti alle politiche privacy di Streamlit
         
-        🔑 **Crittografia:**
-        • Algoritmo: PBKDF2-HMAC-SHA256
-        • Iterazioni: 100.000
-        • Salt: 32 byte casuali per utente
+        🔗 **Connessioni di rete:**
+        • Trasmissione dati cifrata (HTTPS)
+        • Comunicazione con server Streamlit
+        • Download librerie esterne
         
-        ⏱️ **Sicurezza sessione:**
-        • Timeout automatico dopo 1 ora
-        • Blocco account dopo 5 tentativi falliti
-        • Lockout temporaneo di 5 minuti
-        
-        💾 **I tuoi file:**
-        • `spese_data_{}.json` (solo le tue spese)
-        • Backup scaricabili in locale
-        • Restore da file locali
-        """.format(st.session_state.username))
+        💡 **Per massima privacy:**
+        • Scarica il codice dal nostro repository
+        • Esegui l'app localmente sul tuo PC
+        • Tutti i dati rimarranno solo da te
+        """)
     
     st.markdown("---")
     
-    st.info("""
-    ### 📋 **DICHIARAZIONE UFFICIALE**
+    st.warning("""
+    ### 📋 **DICHIARAZIONE TRASPARENTE**
     
-    **Noi, sviluppatori di questa applicazione, dichiariamo solennemente che:**
+    **Noi sviluppatori dichiariamo che:**
     
-    1. **NON raccogliamo** alcuna informazione personale, finanziaria o di utilizzo
-    2. **NON trasmettiamo** alcun dato verso server esterni, database cloud o servizi terzi
-    3. **NON utilizziamo** sistemi di tracking, analytics o monitoraggio
-    4. **NON abbiamo accesso** ai tuoi dati - rimangono esclusivamente sul tuo dispositivo
-    5. **NON conserviamo** copie dei tuoi dati sui nostri sistemi
-    6. **NON condividiamo** informazioni con terze parti di alcun tipo
+    ✅ **NON raccogliamo** le tue informazioni finanziarie personali
+    ✅ **NON monitoriamo** le tue spese o abitudini
+    ✅ **NON condividiamo** i tuoi dati con terze parti
+    ✅ **NON abbiamo accesso** ai contenuti dei tuoi file di spesa
     
-    La tua privacy è **completamente garantita** e i tuoi dati finanziari sono **totalmente privati**.
+    ⚠️ **Tuttavia, questa app è ospitata su Streamlit Cloud**, quindi:
+    • I tuoi dati vengono salvati sui server di Streamlit/Snowflake
+    • Sono soggetti alle [politiche privacy di Streamlit](https://streamlit.io/privacy-policy)
+    • Per massima privacy, usa l'app localmente scaricando il codice
     """)
     
     st.markdown("---")
     
-    st.markdown("""
-    ### 🔍 **VERIFICA TU STESSO:**
+    st.info("""
+    ### 🏠 **ALTERNATIVA PER MASSIMA PRIVACY:**
     
-    Se hai competenze tecniche, puoi verificare personalmente che:
-    • I file sono salvati solo nella cartella `secure_data` del tuo dispositivo
-    • Non vengono effettuate chiamate di rete (tranne per le librerie Streamlit standard)
-    • Il codice sorgente è trasparente e ispezionabile
-    • Non ci sono connessioni a database esterni o API di terze parti
+    **Vuoi che i dati rimangano solo sul tuo dispositivo?**
+    
+    1. 📥 Scarica il codice sorgente dal repository
+    2. 💻 Installa Python e Streamlit sul tuo PC
+    3. ▶️ Esegui l'app localmente con `streamlit run app.py`
+    4. 🔒 Tutti i dati rimarranno solo sul tuo dispositivo
+    
+    In questo modo avrai **privacy totale** senza alcuna trasmissione di dati.
     """)
 
 # PAGINA CAMBIO PASSWORD
@@ -1081,14 +1073,13 @@ st.sidebar.markdown(f"• File: spese_data_{st.session_state.username}.json")
 
 # Disclaimer Privacy nella sidebar
 st.sidebar.markdown("---")
-st.sidebar.success("🛡️ **PRIVACY GARANTITA**")
+st.sidebar.info("🔒 **PRIVACY**")
 st.sidebar.markdown("""
-**✅ Nessuna informazione personale viene gestita o salvata dall'app**
+**Noi sviluppatori NON raccogliamo le tue informazioni finanziarie**
 
-• Dati completamente locali
-• Zero trasmissioni esterne  
-• Nessun tracking o analytics
-• File isolati per utente
+⚠️ **App su Streamlit Cloud**: i dati sono sui server Streamlit
+
+💡 **Massima privacy**: scarica il codice e usalo localmente
 """)
 
 if st.sidebar.button("ℹ️ Dettagli Privacy"):
@@ -1096,4 +1087,4 @@ if st.sidebar.button("ℹ️ Dettagli Privacy"):
     st.rerun()
 
 st.markdown("<p style='text-align: center; color: gray;'>Created by AS with the supervision of KIM😼</p>", unsafe_allow_html=True)
-st.markdown("<p style='text-align: center; color: gray; font-size: 0.8em;'>🔒 <strong>Privacy garantita:</strong> Nessuna informazione personale viene raccolta, trasmessa o salvata su server esterni. Tutti i dati rimangono sul tuo dispositivo locale.</p>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center; color: gray; font-size: 0.8em;'>🔒 <strong>Privacy:</strong> Noi sviluppatori non raccogliamo le tue informazioni finanziarie. App ospitata su Streamlit Cloud - per massima privacy usa il codice localmente.</p>", unsafe_allow_html=True)
