@@ -197,23 +197,10 @@ if st.session_state.current_page == "dashboard":
         spese_per_categoria = df_categorie.groupby('categoria')['importo'].sum().reset_index()
         spese_per_categoria = spese_per_categoria.sort_values('importo', ascending=False)
         
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            # Grafico spese per categoria
-            fig = px.pie(spese_per_categoria, values='importo', names='categoria', 
-                       title="Spese per Categoria")
-            st.plotly_chart(fig, use_container_width=True)
-        
-        with col2:
-            # Grafico andamento giornaliero
-            df_giornaliero = pd.DataFrame(spese_mese)
-            df_giornaliero['data'] = pd.to_datetime(df_giornaliero['data'])
-            spese_per_giorno = df_giornaliero.groupby('data')['importo'].sum().reset_index()
-            
-            fig = px.line(spese_per_giorno, x='data', y='importo', 
-                        title="Andamento Spese Giornaliere")
-            st.plotly_chart(fig, use_container_width=True)
+        # Grafico spese per categoria
+        fig = px.pie(spese_per_categoria, values='importo', names='categoria', 
+                   title="Spese per Categoria")
+        st.plotly_chart(fig, use_container_width=True)
         
         # Lista spese per categoria
         st.write("**Riassunto per categoria:**")
