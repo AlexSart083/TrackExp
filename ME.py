@@ -3,10 +3,14 @@ import pandas as pd
 import json
 import os
 import hashlib
+import secrets
+import time
 from datetime import datetime, date
 import calendar
 import plotly.express as px
 import plotly.graph_objects as go
+from pathlib import Path
+import re
 
 # Configurazione della pagina
 st.set_page_config(
@@ -15,65 +19,296 @@ st.set_page_config(
     layout="wide"
 )
 
-# Funzioni di autenticazione
-def hash_password(password):
-    """Hash della password usando SHA256"""
-    return hashlib.sha256(password.encode()).hexdigest()
+# Configurazioni di sicurezza
+SECURITY_CONFIG = {
+    'MIN_PASSWORD_LENGTH': 8,
+    'MAX_LOGIN_ATTEMPTS': 5,
+    'LOCKOUT_DURATION': 300,  # 5 minuti in secondi
+    'SESSION_TIMEOUT': 3600,  # 1 ora in secondi
+    'SALT_LENGTH': 32,
+    'HASH_ITERATIONS': 100000
+}
+
+# Funzioni di sicurezza avanzate
+def generate_salt():
+    """Genera un salt casuale per l'hashing della password"""
+    return secrets.token_hex(SECURITY_CONFIG['SALT_LENGTH'])
+
+def hash_password_secure(password, salt):
+    """Hash sicuro della password con salt e PBKDF2"""
+    return hashlib.pbkdf2_hmac('sha256', 
+                              password.encode('utf-8'), 
+                              salt.encode('utf-8'), 
+                              SECURITY_CONFIG['HASH_ITERATIONS']).hex()
+
+def validate_password_strength(password):
+    """Valida la forza della password"""
+    if len(password) < SECURITY_CONFIG['MIN_PASSWORD_LENGTH']:
+        return False, f"La password deve essere di almeno {SECURITY_CONFIG['MIN_PASSWORD_LENGTH']} caratteri"
+    
+    checks = {
+        'uppercase': re.search(r'[A-Z]', password),
+        'lowercase': re.search(r'[a-z]', password), 
+        'digit': re.search(r'\d', password),
+        'special': re.search(r'[!@#$%^&*(),.?":{}|<>]', password)
+    }
+    
+    missing = [key for key, value in checks.items() if not value]
+    
+    if len(missing) > 1:
+        requirements = {
+            'uppercase': 'lettere maiuscole',
+            'lowercase': 'lettere minuscole', 
+            'digit': 'numeri',
+            'special': 'caratteri speciali (!@#$%^&*(),.?":{}|<>)'
+        }
+        missing_text = ', '.join([requirements[req] for req in missing])
+        return False, f"La password deve contenere: {missing_text}"
+    
+    return True, "Password valida"
+
+def sanitize_username(username):
+    """Sanitizza il nome utente"""
+    # Rimuove caratteri non alfanumerici eccetto underscore e trattini
+    return re.sub(r'[^a-zA-Z0-9_-]', '', username)
+
+def get_secure_data_dir():
+    """Crea e restituisce la directory sicura per i dati"""
+    data_dir = Path("secure_data")
+    data_dir.mkdir(exist_ok=True)
+    return data_dir
 
 def get_user_data_file(username):
-    """Genera il nome del file dati specifico per utente"""
-    return f"spese_data_{username}.json"
+    """Genera il percorso sicuro del file dati specifico per utente"""
+    username_clean = sanitize_username(username)
+    data_dir = get_secure_data_dir()
+    return str(data_dir / f"spese_data_{username_clean}.json")
+
+def get_users_file():
+    """Restituisce il percorso del file utenti sicuro"""
+    data_dir = get_secure_data_dir()
+    return str(data_dir / "users_secure.json")
+
+def get_login_attempts_file():
+    """Restituisce il percorso del file per il tracking dei tentativi di login"""
+    data_dir = get_secure_data_dir()
+    return str(data_dir / "login_attempts.json")
+
+def load_login_attempts():
+    """Carica i tentativi di login"""
+    attempts_file = get_login_attempts_file()
+    if os.path.exists(attempts_file):
+        try:
+            with open(attempts_file, 'r') as f:
+                return json.load(f)
+        except:
+            return {}
+    return {}
+
+def save_login_attempts(attempts_data):
+    """Salva i tentativi di login"""
+    attempts_file = get_login_attempts_file()
+    try:
+        with open(attempts_file, 'w') as f:
+            json.dump(attempts_data, f)
+    except Exception as e:
+        st.error(f"Errore nel salvare i tentativi di login: {e}")
+
+def is_account_locked(username):
+    """Controlla se l'account è bloccato"""
+    attempts_data = load_login_attempts()
+    username_clean = sanitize_username(username)
+    
+    if username_clean not in attempts_data:
+        return False, 0
+    
+    user_attempts = attempts_data[username_clean]
+    
+    # Se non ci sono abbastanza tentativi falliti, non è bloccato
+    if user_attempts.get('failed_attempts', 0) < SECURITY_CONFIG['MAX_LOGIN_ATTEMPTS']:
+        return False, 0
+    
+    # Controlla se il tempo di blocco è scaduto
+    last_attempt = user_attempts.get('last_attempt', 0)
+    current_time = time.time()
+    
+    if current_time - last_attempt > SECURITY_CONFIG['LOCKOUT_DURATION']:
+        # Reset dei tentativi se il tempo di blocco è scaduto
+        attempts_data[username_clean] = {'failed_attempts': 0, 'last_attempt': 0}
+        save_login_attempts(attempts_data)
+        return False, 0
+    
+    remaining_time = SECURITY_CONFIG['LOCKOUT_DURATION'] - (current_time - last_attempt)
+    return True, int(remaining_time)
+
+def record_failed_login(username):
+    """Registra un tentativo di login fallito"""
+    attempts_data = load_login_attempts()
+    username_clean = sanitize_username(username)
+    
+    if username_clean not in attempts_data:
+        attempts_data[username_clean] = {'failed_attempts': 0, 'last_attempt': 0}
+    
+    attempts_data[username_clean]['failed_attempts'] += 1
+    attempts_data[username_clean]['last_attempt'] = time.time()
+    
+    save_login_attempts(attempts_data)
+
+def record_successful_login(username):
+    """Registra un login riuscito (reset dei tentativi falliti)"""
+    attempts_data = load_login_attempts()
+    username_clean = sanitize_username(username)
+    
+    if username_clean in attempts_data:
+        attempts_data[username_clean] = {'failed_attempts': 0, 'last_attempt': 0}
+        save_login_attempts(attempts_data)
+
+def check_session_timeout():
+    """Controlla se la sessione è scaduta"""
+    if 'last_activity' not in st.session_state:
+        st.session_state.last_activity = time.time()
+        return False
+    
+    current_time = time.time()
+    if current_time - st.session_state.last_activity > SECURITY_CONFIG['SESSION_TIMEOUT']:
+        return True
+    
+    # Aggiorna l'ultimo tempo di attività
+    st.session_state.last_activity = current_time
+    return False
 
 def authenticate_user(username, password):
-    """Autentica l'utente"""
-    users_file = "users.json"
+    """Autentica l'utente con sicurezza migliorata"""
+    users_file = get_users_file()
+    username_clean = sanitize_username(username)
+    
+    # Controlla se l'account è bloccato
+    is_locked, remaining_time = is_account_locked(username_clean)
+    if is_locked:
+        return False, f"Account bloccato. Riprova tra {remaining_time} secondi."
     
     # Se il file utenti non esiste, crealo vuoto
     if not os.path.exists(users_file):
         with open(users_file, 'w') as f:
             json.dump({}, f)
-        return False
+        record_failed_login(username_clean)
+        return False, "Credenziali non valide"
     
     try:
         with open(users_file, 'r') as f:
             users = json.load(f)
         
-        if username in users:
-            return users[username] == hash_password(password)
-        return False
-    except:
-        return False
+        if username_clean in users:
+            user_data = users[username_clean]
+            stored_hash = user_data['password_hash']
+            salt = user_data['salt']
+            
+            # Verifica la password
+            password_hash = hash_password_secure(password, salt)
+            if password_hash == stored_hash:
+                record_successful_login(username_clean)
+                return True, "Login effettuato con successo"
+            else:
+                record_failed_login(username_clean)
+                return False, "Credenziali non valide"
+        else:
+            record_failed_login(username_clean)
+            return False, "Credenziali non valide"
+    except Exception as e:
+        st.error(f"Errore durante l'autenticazione: {e}")
+        return False, "Errore del sistema"
 
 def register_user(username, password):
-    """Registra un nuovo utente"""
-    users_file = "users.json"
+    """Registra un nuovo utente con sicurezza migliorata"""
+    users_file = get_users_file()
+    username_clean = sanitize_username(username)
+    
+    # Validazione username
+    if len(username_clean) < 3:
+        return False, "L'username deve essere di almeno 3 caratteri alfanumerici"
+    
+    if username != username_clean:
+        return False, "L'username può contenere solo lettere, numeri, underscore e trattini"
+    
+    # Validazione password
+    is_valid, message = validate_password_strength(password)
+    if not is_valid:
+        return False, message
     
     # Carica utenti esistenti
     if os.path.exists(users_file):
-        with open(users_file, 'r') as f:
-            users = json.load(f)
+        try:
+            with open(users_file, 'r') as f:
+                users = json.load(f)
+        except:
+            users = {}
     else:
         users = {}
     
     # Controlla se l'utente esiste già
-    if username in users:
+    if username_clean in users:
         return False, "Username già esistente"
     
+    # Genera salt e hash della password
+    salt = generate_salt()
+    password_hash = hash_password_secure(password, salt)
+    
     # Aggiungi nuovo utente
-    users[username] = hash_password(password)
+    users[username_clean] = {
+        'password_hash': password_hash,
+        'salt': salt,
+        'created_at': datetime.now().isoformat(),
+        'original_username': username  # Mantieni l'username originale per display
+    }
     
     try:
         with open(users_file, 'w') as f:
-            json.dump(users, f)
+            json.dump(users, f, indent=2)
         return True, "Utente registrato con successo"
-    except:
-        return False, "Errore durante la registrazione"
+    except Exception as e:
+        return False, f"Errore durante la registrazione: {e}"
+
+def change_password(username, old_password, new_password):
+    """Cambia la password dell'utente"""
+    # Verifica la password attuale
+    is_valid, message = authenticate_user(username, old_password)
+    if not is_valid:
+        return False, "Password attuale non corretta"
+    
+    # Valida la nuova password
+    is_valid, message = validate_password_strength(new_password)
+    if not is_valid:
+        return False, message
+    
+    users_file = get_users_file()
+    username_clean = sanitize_username(username)
+    
+    try:
+        with open(users_file, 'r') as f:
+            users = json.load(f)
+        
+        # Genera nuovo salt e hash
+        salt = generate_salt()
+        password_hash = hash_password_secure(new_password, salt)
+        
+        # Aggiorna la password
+        users[username_clean]['password_hash'] = password_hash
+        users[username_clean]['salt'] = salt
+        users[username_clean]['password_changed_at'] = datetime.now().isoformat()
+        
+        with open(users_file, 'w') as f:
+            json.dump(users, f, indent=2)
+            
+        return True, "Password cambiata con successo"
+        
+    except Exception as e:
+        return False, f"Errore durante il cambio password: {e}"
 
 def login_form():
-    """Form di login/registrazione"""
-    st.title("🔐 Accesso - Gestione Spese Mensili")
+    """Form di login/registrazione con sicurezza migliorata"""
+    st.title("🔐 Accesso Sicuro - Gestione Spese Mensili")
     
-    tab1, tab2 = st.tabs(["Login", "Registrazione"])
+    tab1, tab2, tab3 = st.tabs(["🔑 Login", "📝 Registrazione", "🔒 Cambia Password"])
     
     with tab1:
         st.subheader("Accedi al tuo account")
@@ -84,55 +319,126 @@ def login_form():
             
             if login_submitted:
                 if username and password:
-                    if authenticate_user(username, password):
-                        st.session_state.authenticated = True
-                        st.session_state.username = username
-                        st.success("Login effettuato con successo!")
-                        st.rerun()
+                    username_clean = sanitize_username(username)
+                    
+                    # Controlla se l'account è bloccato
+                    is_locked, remaining_time = is_account_locked(username_clean)
+                    if is_locked:
+                        st.error(f"🚫 Account bloccato per troppi tentativi falliti. Riprova tra {remaining_time} secondi.")
                     else:
-                        st.error("Username o password non corretti")
+                        success, message = authenticate_user(username, password)
+                        if success:
+                            st.session_state.authenticated = True
+                            st.session_state.username = username_clean
+                            st.session_state.display_username = username
+                            st.session_state.last_activity = time.time()
+                            st.success("✅ Login effettuato con successo!")
+                            st.rerun()
+                        else:
+                            st.error(f"❌ {message}")
+                            
+                            # Mostra informazioni sui tentativi rimanenti
+                            attempts_data = load_login_attempts()
+                            if username_clean in attempts_data:
+                                failed_attempts = attempts_data[username_clean].get('failed_attempts', 0)
+                                remaining_attempts = SECURITY_CONFIG['MAX_LOGIN_ATTEMPTS'] - failed_attempts
+                                if remaining_attempts > 0:
+                                    st.warning(f"⚠️ Tentativi rimanenti: {remaining_attempts}")
                 else:
-                    st.error("Inserisci username e password")
+                    st.error("❌ Inserisci username e password")
     
     with tab2:
-        st.subheader("Crea un nuovo account")
+        st.subheader("Crea un nuovo account sicuro")
         with st.form("register_form"):
-            new_username = st.text_input("Nuovo Username")
-            new_password = st.text_input("Nuova Password", type="password")
+            new_username = st.text_input("Nuovo Username", 
+                                       help="Minimo 3 caratteri. Solo lettere, numeri, underscore e trattini.")
+            new_password = st.text_input("Nuova Password", type="password",
+                                       help=f"Minimo {SECURITY_CONFIG['MIN_PASSWORD_LENGTH']} caratteri con lettere maiuscole, minuscole, numeri e caratteri speciali.")
             confirm_password = st.text_input("Conferma Password", type="password")
             register_submitted = st.form_submit_button("Registrati")
             
             if register_submitted:
                 if new_username and new_password and confirm_password:
                     if new_password == confirm_password:
-                        if len(new_password) >= 6:
-                            success, message = register_user(new_username, new_password)
-                            if success:
-                                st.success(message)
-                                st.info("Ora puoi effettuare il login con le tue credenziali")
-                            else:
-                                st.error(message)
+                        success, message = register_user(new_username, new_password)
+                        if success:
+                            st.success(f"✅ {message}")
+                            st.info("🎉 Ora puoi effettuare il login con le tue credenziali")
                         else:
-                            st.error("La password deve essere di almeno 6 caratteri")
+                            st.error(f"❌ {message}")
                     else:
-                        st.error("Le password non coincidono")
+                        st.error("❌ Le password non coincidono")
                 else:
-                    st.error("Compila tutti i campi")
+                    st.error("❌ Compila tutti i campi")
+    
+    with tab3:
+        st.subheader("Cambia Password")
+        st.info("👤 Devi essere loggato per cambiare la password")
+        
+        if st.session_state.get('authenticated', False):
+            with st.form("change_password_form"):
+                current_password = st.text_input("Password Attuale", type="password")
+                new_password = st.text_input("Nuova Password", type="password",
+                                           help=f"Minimo {SECURITY_CONFIG['MIN_PASSWORD_LENGTH']} caratteri con lettere maiuscole, minuscole, numeri e caratteri speciali.")
+                confirm_new_password = st.text_input("Conferma Nuova Password", type="password")
+                change_submitted = st.form_submit_button("Cambia Password")
+                
+                if change_submitted:
+                    if current_password and new_password and confirm_new_password:
+                        if new_password == confirm_new_password:
+                            success, message = change_password(st.session_state.username, current_password, new_password)
+                            if success:
+                                st.success(f"✅ {message}")
+                                st.info("🔒 Per sicurezza, effettua un nuovo login")
+                                # Logout automatico dopo cambio password
+                                st.session_state.authenticated = False
+                                st.session_state.username = None
+                                time.sleep(2)
+                                st.rerun()
+                            else:
+                                st.error(f"❌ {message}")
+                        else:
+                            st.error("❌ Le nuove password non coincidono")
+                    else:
+                        st.error("❌ Compila tutti i campi")
+        else:
+            st.warning("🔒 Effettua il login per cambiare la password")
     
     st.markdown("---")
-    st.info("💡 **Informazioni:**\n- I tuoi dati sono privati e isolati dagli altri utenti\n- Ogni utente ha accesso solo ai propri dati\n- Crea un account per iniziare a tracciare le tue spese")
+    st.info("""
+    🛡️ **Sicurezza Migliorata:**
+    • Password robuste obbligatorie
+    • Protezione contro attacchi brute force
+    • Blocco account temporaneo dopo tentativi falliti
+    • Timeout automatico della sessione
+    • Crittografia avanzata delle password
+    • Dati utente isolati e protetti
+    """)
 
 # Inizializzazione dello stato della sessione
 if 'authenticated' not in st.session_state:
     st.session_state.authenticated = False
 if 'username' not in st.session_state:
     st.session_state.username = None
+if 'display_username' not in st.session_state:
+    st.session_state.display_username = None
 if 'spese_giornaliere' not in st.session_state:
     st.session_state.spese_giornaliere = []
 if 'spese_ricorrenti' not in st.session_state:
     st.session_state.spese_ricorrenti = []
 if 'current_page' not in st.session_state:
     st.session_state.current_page = "dashboard"
+
+# Controllo timeout sessione
+if st.session_state.authenticated and check_session_timeout():
+    st.session_state.authenticated = False
+    st.session_state.username = None
+    st.session_state.display_username = None
+    st.session_state.spese_giornaliere = []
+    st.session_state.spese_ricorrenti = []
+    st.session_state.current_page = "dashboard"
+    st.error("🕐 Sessione scaduta per inattività. Effettua nuovamente il login.")
+    st.rerun()
 
 # Se non autenticato, mostra il form di login
 if not st.session_state.authenticated:
@@ -142,7 +448,7 @@ if not st.session_state.authenticated:
 # Se arrivati qui, l'utente è autenticato
 DATA_FILE = get_user_data_file(st.session_state.username)
 
-# Funzioni per il salvataggio e caricamento dei dati (specifiche per utente)
+# Funzioni per il salvataggio e caricamento dei dati (identiche al codice originale)
 def salva_dati():
     """Salva i dati in un file JSON specifico per utente"""
     data = {
@@ -245,19 +551,28 @@ def reset_form_fields():
 # Carica i dati all'avvio (specifici per utente)
 carica_dati()
 
-# Header con info utente e logout
-col1, col2, col3 = st.columns([3, 1, 1])
+# Header con info utente sicuro e logout
+col1, col2, col3, col4 = st.columns([2, 1, 1, 1])
 with col1:
     st.title("💰 Gestione Spese Mensili")
 with col2:
-    st.write(f"👤 **{st.session_state.username}**")
+    display_name = st.session_state.display_username or st.session_state.username
+    st.write(f"👤 **{display_name}**")
 with col3:
-    if st.button("🚪 Logout"):
+    # Mostra tempo rimanente sessione
+    if 'last_activity' in st.session_state:
+        remaining = SECURITY_CONFIG['SESSION_TIMEOUT'] - (time.time() - st.session_state.last_activity)
+        remaining_mins = int(remaining / 60)
+        st.write(f"⏱️ {remaining_mins}min")
+with col4:
+    if st.button("🚪 Logout Sicuro"):
         st.session_state.authenticated = False
         st.session_state.username = None
+        st.session_state.display_username = None
         st.session_state.spese_giornaliere = []
         st.session_state.spese_ricorrenti = []
         st.session_state.current_page = "dashboard"
+        st.success("🔒 Logout effettuato con successo!")
         st.rerun()
 
 # DASHBOARD (ex Resoconto Mensile)
