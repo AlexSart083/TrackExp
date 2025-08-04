@@ -889,3 +889,9 @@ st.sidebar.markdown("🔒 **Sicurezza:**")
 st.sidebar.markdown("• I tuoi dati sono privati")
 st.sidebar.markdown("• File personale isolato")
 st.sidebar.markdown(f"• File: spese_data_{st.session_state.username}.json")
+    st.markdown(
+        f"<div style='text-align: center; color: #666; font-size: 0.8em; margin-top: 2em;'>"
+        f"{get_text('footer', lang)}"
+        f"</div>", 
+        unsafe_allow_html=True
+    )
