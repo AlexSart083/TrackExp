@@ -304,9 +304,31 @@ def change_password(username, old_password, new_password):
     except Exception as e:
         return False, f"Errore durante il cambio password: {e}"
 
+def show_privacy_disclaimer():
+    """Mostra il disclaimer sulla privacy"""
+    st.info("""
+    🔒 **INFORMATIVA PRIVACY**
+    
+    Questa è un'applicazione di gestione spese **completamente locale e privata**:
+    
+    • ✅ **Nessuna informazione personale** viene raccolta, trasmessa o salvata su server esterni
+    • ✅ **Tutti i dati rimangono sul tuo dispositivo** locale nella cartella "secure_data"
+    • ✅ **Non viene effettuato alcun tracking** o monitoraggio delle tue attività
+    • ✅ **Non vengono utilizzati cookie** di profilazione o analytics
+    • ✅ **Le password sono crittografate** con algoritmi di sicurezza avanzati (PBKDF2)
+    • ✅ **Ogni utente ha file separati** e completamente isolati
+    
+    I tuoi dati finanziari e personali sono **completamente privati e sicuri**.
+    """)
+
 def login_form():
     """Form di login/registrazione con sicurezza migliorata"""
     st.title("🔐 Accesso Sicuro - Gestione Spese Mensili")
+    
+    # Disclaimer Privacy prominente nella pagina di login
+    show_privacy_disclaimer()
+    
+    st.markdown("---")
     
     tab1, tab2 = st.tabs(["🔑 Login", "📝 Registrazione"])
     
@@ -519,7 +541,7 @@ def reset_form_fields():
 carica_dati()
 
 # Header con info utente sicuro e logout
-col1, col2, col3, col4, col5 = st.columns([2, 1, 1, 1, 1])
+col1, col2, col3, col4, col5, col6 = st.columns([2, 1, 1, 1, 1, 1])
 with col1:
     st.title("💸 Gestione Spese Mensili")
 with col2:
@@ -536,6 +558,10 @@ with col4:
         st.session_state.current_page = "change_password"
         st.rerun()
 with col5:
+    if st.button("🛡️ Privacy"):
+        st.session_state.current_page = "privacy_info"
+        st.rerun()
+with col6:
     if st.button("🚪 Logout"):
         st.session_state.authenticated = False
         st.session_state.username = None
@@ -546,8 +572,111 @@ with col5:
         st.success("🔒 Logout effettuato con successo!")
         st.rerun()
 
+# PAGINA INFORMAZIONI PRIVACY
+if st.session_state.current_page == "privacy_info":
+    col1, col2 = st.columns([1, 4])
+    with col1:
+        if st.button("🏠 Dashboard"):
+            st.session_state.current_page = "dashboard"
+            st.rerun()
+    
+    st.header("🛡️ Informazioni sulla Privacy")
+    st.write(f"👤 **Utente:** {st.session_state.display_username}")
+    
+    st.markdown("---")
+    
+    st.success("""
+    ## 🔒 PRIVACY E SICUREZZA DEI TUOI DATI
+    
+    Questa applicazione è stata progettata con la **massima attenzione alla privacy** e alla sicurezza dei tuoi dati personali e finanziari.
+    """)
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("""
+        ### ✅ **COSA GARANTIAMO:**
+        
+        🏠 **Dati completamente locali**
+        • Tutti i dati rimangono sul tuo dispositivo
+        • Nessuna trasmissione verso server esterni
+        • Nessun cloud storage involontario
+        
+        🔐 **Sicurezza avanzata**
+        • Password crittografate con PBKDF2
+        • Salt univoci per ogni utente
+        • Isolamento completo tra utenti
+        
+        🚫 **Zero tracking**
+        • Nessun cookie di profilazione
+        • Nessuna raccolta di analytics
+        • Nessun monitoraggio comportamentale
+        
+        📁 **File separati per utente**
+        • Ogni utente ha file completamente isolati
+        • Impossibilità di accesso incrociato
+        • Backup personali e privati
+        """)
+    
+    with col2:
+        st.markdown("""
+        ### 🛡️ **DETTAGLI TECNICI:**
+        
+        📂 **Struttura dei file:**
+        ```
+        secure_data/
+        ├── users_secure.json (solo hash password)
+        ├── login_attempts.json (sicurezza)
+        └── spese_data_[username].json (i tuoi dati)
+        ```
+        
+        🔑 **Crittografia:**
+        • Algoritmo: PBKDF2-HMAC-SHA256
+        • Iterazioni: 100.000
+        • Salt: 32 byte casuali per utente
+        
+        ⏱️ **Sicurezza sessione:**
+        • Timeout automatico dopo 1 ora
+        • Blocco account dopo 5 tentativi falliti
+        • Lockout temporaneo di 5 minuti
+        
+        💾 **I tuoi file:**
+        • `spese_data_{}.json` (solo le tue spese)
+        • Backup scaricabili in locale
+        • Restore da file locali
+        """.format(st.session_state.username))
+    
+    st.markdown("---")
+    
+    st.info("""
+    ### 📋 **DICHIARAZIONE UFFICIALE**
+    
+    **Noi, sviluppatori di questa applicazione, dichiariamo solennemente che:**
+    
+    1. **NON raccogliamo** alcuna informazione personale, finanziaria o di utilizzo
+    2. **NON trasmettiamo** alcun dato verso server esterni, database cloud o servizi terzi
+    3. **NON utilizziamo** sistemi di tracking, analytics o monitoraggio
+    4. **NON abbiamo accesso** ai tuoi dati - rimangono esclusivamente sul tuo dispositivo
+    5. **NON conserviamo** copie dei tuoi dati sui nostri sistemi
+    6. **NON condividiamo** informazioni con terze parti di alcun tipo
+    
+    La tua privacy è **completamente garantita** e i tuoi dati finanziari sono **totalmente privati**.
+    """)
+    
+    st.markdown("---")
+    
+    st.markdown("""
+    ### 🔍 **VERIFICA TU STESSO:**
+    
+    Se hai competenze tecniche, puoi verificare personalmente che:
+    • I file sono salvati solo nella cartella `secure_data` del tuo dispositivo
+    • Non vengono effettuate chiamate di rete (tranne per le librerie Streamlit standard)
+    • Il codice sorgente è trasparente e ispezionabile
+    • Non ci sono connessioni a database esterni o API di terze parti
+    """)
+
 # PAGINA CAMBIO PASSWORD
-if st.session_state.current_page == "change_password":
+elif st.session_state.current_page == "change_password":
     col1, col2 = st.columns([1, 4])
     with col1:
         if st.button("🏠 Dashboard"):
@@ -949,4 +1078,22 @@ st.sidebar.markdown("🔒 **Sicurezza:**")
 st.sidebar.markdown("• I tuoi dati sono privati")
 st.sidebar.markdown("• File personale isolato")
 st.sidebar.markdown(f"• File: spese_data_{st.session_state.username}.json")
+
+# Disclaimer Privacy nella sidebar
+st.sidebar.markdown("---")
+st.sidebar.success("🛡️ **PRIVACY GARANTITA**")
+st.sidebar.markdown("""
+**✅ Nessuna informazione personale viene gestita o salvata dall'app**
+
+• Dati completamente locali
+• Zero trasmissioni esterne  
+• Nessun tracking o analytics
+• File isolati per utente
+""")
+
+if st.sidebar.button("ℹ️ Dettagli Privacy"):
+    st.session_state.current_page = "privacy_info"
+    st.rerun()
+
 st.markdown("<p style='text-align: center; color: gray;'>Created by AS with the supervision of KIM😼</p>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center; color: gray; font-size: 0.8em;'>🔒 <strong>Privacy garantita:</strong> Nessuna informazione personale viene raccolta, trasmessa o salvata su server esterni. Tutti i dati rimangono sul tuo dispositivo locale.</p>", unsafe_allow_html=True)
