@@ -15,156 +15,118 @@ st.set_page_config(
     layout="wide"
 )
 
-# Configurazione OAuth Google
-def init_google_oauth():
-    """Inizializza l'autenticazione Google OAuth"""
-    try:
-        # Verifica se i secrets sono configurati
-        if "google_oauth" not in st.secrets:
-            st.error("⚠️ **Configurazione OAuth mancante!**")
-            st.info("""
-            **Per amministratori:** Aggiungere in `secrets.toml`:
-            ```toml
-            [google_oauth]
-            client_id = "your-google-client-id"
-            client_secret = "your-google-client-secret"
-            redirect_uri = "your-streamlit-app-url"
-            ```
-            
-            **Setup Google OAuth:**
-            1. Vai su [Google Cloud Console](https://console.cloud.google.com/)
-            2. Crea un nuovo progetto o seleziona esistente
-            3. Abilita Google+ API
-            4. Crea credenziali OAuth 2.0
-            5. Aggiungi l'URL della tua app Streamlit come redirect URI
-            """)
-            return False
-            
-        return True
-    except Exception as e:
-        st.error(f"Errore nella configurazione OAuth: {e}")
-        return False
-
-def get_google_auth_url():
-    """Genera URL per autenticazione Google"""
-    try:
-        client_id = st.secrets["google_oauth"]["client_id"]
-        redirect_uri = st.secrets["google_oauth"]["redirect_uri"]
-        
-        auth_url = f"https://accounts.google.com/oauth/authorize"
-        params = {
-            "client_id": client_id,
-            "redirect_uri": redirect_uri,
-            "scope": "openid email profile",
-            "response_type": "code",
-            "access_type": "offline",
-            "prompt": "consent"
-        }
-        
-        url_params = "&".join([f"{k}={v}" for k, v in params.items()])
-        return f"{auth_url}?{url_params}"
-    except Exception as e:
-        st.error(f"Errore nella generazione URL: {e}")
-        return None
-
-def simulate_google_login():
-    """Simula il login Google per demo (da sostituire con vera implementazione)"""
-    if "demo_user" not in st.session_state:
-        st.session_state.demo_user = None
-    
-    st.title("🔐 Accesso - Gestione Spese Mensili")
-    
-    # Messaggio informativo per la demo
-    st.info("""
-    **🚧 MODALITÀ DEMO - OAuth Google**
-    
-    In una vera implementazione, questo sarebbe il flusso OAuth completo con Google.
-    Per ora, inserisci un nome utente per testare l'app.
-    """)
-    
-    col1, col2 = st.columns([1, 1])
-    
-    with col1:
-        st.subheader("🔑 Demo Login")
-        with st.form("demo_login"):
-            demo_username = st.text_input("Nome utente (demo)", placeholder="es: mario.rossi")
-            demo_email = st.text_input("Email (demo)", placeholder="es: mario.rossi@gmail.com")
-            login_demo = st.form_submit_button("🚀 Accedi (Demo)")
-            
-            if login_demo and demo_username and demo_email:
-                st.session_state.authenticated = True
-                st.session_state.username = demo_username
-                st.session_state.user_email = demo_email
-                st.session_state.auth_method = "demo"
-                st.success("✅ Login demo effettuato!")
-                st.rerun()
-    
-    with col2:
-        st.subheader("🔒 OAuth Google (Produzione)")
-        
-        if init_google_oauth():
-            auth_url = get_google_auth_url()
-            if auth_url:
-                if st.button("🔐 Accedi con Google", use_container_width=True):
-                    st.markdown(f'<meta http-equiv="refresh" content="0; url={auth_url}">', unsafe_allow_html=True)
-                    st.info("Reindirizzamento a Google...")
-        else:
-            st.error("OAuth non configurato")
-        
-        st.markdown("---")
-        st.markdown("**🔐 Vantaggi OAuth:**")
-        st.markdown("• ✅ Zero gestione password")
-        st.markdown("• ✅ Sicurezza Google")
-        st.markdown("• ✅ Login rapido")
-        st.markdown("• ✅ No data leak credenziali")
-    
-    # Informazioni per sviluppatori
-    with st.expander("📚 Guida Implementazione OAuth"):
-        st.markdown("""
-        **Per implementare OAuth Google completo:**
-        
-        1. **Google Cloud Console Setup:**
-           - Crea progetto Google Cloud
-           - Abilita Google+ API
-           - Crea credenziali OAuth 2.0
-           - Aggiungi redirect URI della tua app
-        
-        2. **Streamlit Secrets:**
-           ```toml
-           [google_oauth]
-           client_id = "123456789-abc.apps.googleusercontent.com"
-           client_secret = "your-secret-key"
-           redirect_uri = "https://your-app.streamlit.app"
-           ```
-        
-        3. **Librerie richieste:**
-           ```
-           requests-oauthlib
-           google-auth
-           google-auth-oauthlib
-           ```
-        
-        4. **Gestione callback:**
-           - Intercetta parametro 'code' dall'URL
-           - Scambia code per access token
-           - Ottieni info utente da Google API
-        """)
+# Funzioni di autenticazione
+def hash_password(password):
+    """Hash della password usando SHA256"""
+    return hashlib.sha256(password.encode()).hexdigest()
 
 def get_user_data_file(username):
     """Genera il nome del file dati specifico per utente"""
-    # Sanifica il nome utente per uso come filename
-    safe_username = "".join(c for c in username if c.isalnum() or c in "._-")
-    return f"spese_data_{safe_username}.json"
+    return f"spese_data_{username}.json"
+
+def authenticate_user(username, password):
+    """Autentica l'utente"""
+    users_file = "users.json"
+    
+    # Se il file utenti non esiste, crealo vuoto
+    if not os.path.exists(users_file):
+        with open(users_file, 'w') as f:
+            json.dump({}, f)
+        return False
+    
+    try:
+        with open(users_file, 'r') as f:
+            users = json.load(f)
+        
+        if username in users:
+            return users[username] == hash_password(password)
+        return False
+    except:
+        return False
+
+def register_user(username, password):
+    """Registra un nuovo utente"""
+    users_file = "users.json"
+    
+    # Carica utenti esistenti
+    if os.path.exists(users_file):
+        with open(users_file, 'r') as f:
+            users = json.load(f)
+    else:
+        users = {}
+    
+    # Controlla se l'utente esiste già
+    if username in users:
+        return False, "Username già esistente"
+    
+    # Aggiungi nuovo utente
+    users[username] = hash_password(password)
+    
+    try:
+        with open(users_file, 'w') as f:
+            json.dump(users, f)
+        return True, "Utente registrato con successo"
+    except:
+        return False, "Errore durante la registrazione"
+
+def login_form():
+    """Form di login/registrazione"""
+    st.title("🔐 Accesso - Gestione Spese Mensili")
+    
+    tab1, tab2 = st.tabs(["Login", "Registrazione"])
+    
+    with tab1:
+        st.subheader("Accedi al tuo account")
+        with st.form("login_form"):
+            username = st.text_input("Username")
+            password = st.text_input("Password", type="password")
+            login_submitted = st.form_submit_button("Accedi")
+            
+            if login_submitted:
+                if username and password:
+                    if authenticate_user(username, password):
+                        st.session_state.authenticated = True
+                        st.session_state.username = username
+                        st.success("Login effettuato con successo!")
+                        st.rerun()
+                    else:
+                        st.error("Username o password non corretti")
+                else:
+                    st.error("Inserisci username e password")
+    
+    with tab2:
+        st.subheader("Crea un nuovo account")
+        with st.form("register_form"):
+            new_username = st.text_input("Nuovo Username")
+            new_password = st.text_input("Nuova Password", type="password")
+            confirm_password = st.text_input("Conferma Password", type="password")
+            register_submitted = st.form_submit_button("Registrati")
+            
+            if register_submitted:
+                if new_username and new_password and confirm_password:
+                    if new_password == confirm_password:
+                        if len(new_password) >= 6:
+                            success, message = register_user(new_username, new_password)
+                            if success:
+                                st.success(message)
+                                st.info("Ora puoi effettuare il login con le tue credenziali")
+                            else:
+                                st.error(message)
+                        else:
+                            st.error("La password deve essere di almeno 6 caratteri")
+                    else:
+                        st.error("Le password non coincidono")
+                else:
+                    st.error("Compila tutti i campi")
+    
+    st.markdown("---")
+    st.info("💡 **Informazioni:**\n- I tuoi dati sono privati e isolati dagli altri utenti\n- Ogni utente ha accesso solo ai propri dati\n- Crea un account per iniziare a tracciare le tue spese")
 
 # Inizializzazione dello stato della sessione
 if 'authenticated' not in st.session_state:
     st.session_state.authenticated = False
 if 'username' not in st.session_state:
     st.session_state.username = None
-if 'user_email' not in st.session_state:
-    st.session_state.user_email = None
-if 'auth_method' not in st.session_state:
-    st.session_state.auth_method = None
 if 'spese_giornaliere' not in st.session_state:
     st.session_state.spese_giornaliere = []
 if 'spese_ricorrenti' not in st.session_state:
@@ -174,7 +136,7 @@ if 'current_page' not in st.session_state:
 
 # Se non autenticato, mostra il form di login
 if not st.session_state.authenticated:
-    simulate_google_login()
+    login_form()
     st.stop()
 
 # Se arrivati qui, l'utente è autenticato
@@ -183,20 +145,12 @@ DATA_FILE = get_user_data_file(st.session_state.username)
 # Funzioni per il salvataggio e caricamento dei dati (specifiche per utente)
 def salva_dati():
     """Salva i dati in un file JSON specifico per utente"""
-    try:
-        data = {
-            'spese_giornaliere': st.session_state.spese_giornaliere,
-            'spese_ricorrenti': st.session_state.spese_ricorrenti,
-            'user_info': {
-                'username': st.session_state.username,
-                'email': st.session_state.user_email,
-                'last_update': datetime.now().isoformat()
-            }
-        }
-        with open(DATA_FILE, 'w', encoding='utf-8') as f:
-            json.dump(data, f, ensure_ascii=False, indent=2, default=str)
-    except Exception as e:
-        st.error(f"Errore nel salvataggio: {e}")
+    data = {
+        'spese_giornaliere': st.session_state.spese_giornaliere,
+        'spese_ricorrenti': st.session_state.spese_ricorrenti
+    }
+    with open(DATA_FILE, 'w', encoding='utf-8') as f:
+        json.dump(data, f, ensure_ascii=False, indent=2, default=str)
 
 def carica_dati():
     """Carica i dati dal file JSON se esiste"""
@@ -227,8 +181,7 @@ def aggiungi_spesa_giornaliera(data, categoria, descrizione, importo):
         'data': data.strftime('%Y-%m-%d'),
         'categoria': categoria,
         'descrizione': descrizione,
-        'importo': float(importo),
-        'timestamp': datetime.now().isoformat()
+        'importo': float(importo)
     }
     st.session_state.spese_giornaliere.append(spesa)
     salva_dati()
@@ -239,8 +192,7 @@ def aggiungi_spesa_ricorrente(nome, categoria, importo, frequenza):
         'nome': nome,
         'categoria': categoria,
         'importo': float(importo),
-        'frequenza': frequenza,
-        'timestamp': datetime.now().isoformat()
+        'frequenza': frequenza
     }
     st.session_state.spese_ricorrenti.append(spesa)
     salva_dati()
@@ -281,10 +233,14 @@ def filtra_spese_per_mese(mese, anno):
 
 def reset_form_fields():
     """Reset dei campi del form"""
-    form_keys = ['form_data', 'form_categoria', 'form_descrizione', 'form_importo']
-    for key in form_keys:
-        if key in st.session_state:
-            del st.session_state[key]
+    if 'form_data' in st.session_state:
+        st.session_state.form_data = None
+    if 'form_categoria' in st.session_state:
+        st.session_state.form_categoria = 0
+    if 'form_descrizione' in st.session_state:
+        st.session_state.form_descrizione = ""
+    if 'form_importo' in st.session_state:
+        st.session_state.form_importo = 0.01
 
 # Carica i dati all'avvio (specifici per utente)
 carica_dati()
@@ -294,18 +250,14 @@ col1, col2, col3 = st.columns([3, 1, 1])
 with col1:
     st.title("💰 Gestione Spese Mensili")
 with col2:
-    auth_icon = "🔒" if st.session_state.auth_method == "google" else "🚧"
-    st.write(f"{auth_icon} **{st.session_state.username}**")
-    if st.session_state.user_email:
-        st.caption(st.session_state.user_email)
+    st.write(f"👤 **{st.session_state.username}**")
 with col3:
     if st.button("🚪 Logout"):
-        # Pulisci completamente la sessione
-        keys_to_clear = ['authenticated', 'username', 'user_email', 'auth_method', 
-                        'spese_giornaliere', 'spese_ricorrenti', 'current_page']
-        for key in keys_to_clear:
-            if key in st.session_state:
-                del st.session_state[key]
+        st.session_state.authenticated = False
+        st.session_state.username = None
+        st.session_state.spese_giornaliere = []
+        st.session_state.spese_ricorrenti = []
+        st.session_state.current_page = "dashboard"
         st.rerun()
 
 # DASHBOARD (ex Resoconto Mensile)
@@ -361,9 +313,6 @@ if st.session_state.current_page == "dashboard":
         st.subheader("Elenco Completo Spese Giornaliere")
         df_mese = pd.DataFrame(spese_mese)
         df_mese['data'] = pd.to_datetime(df_mese['data']).dt.strftime('%d/%m/%Y')
-        # Rimuovi colonna timestamp se presente
-        if 'timestamp' in df_mese.columns:
-            df_mese = df_mese.drop('timestamp', axis=1)
         st.dataframe(df_mese, use_container_width=True)
     else:
         st.info("Nessuna spesa giornaliera per questo mese")
@@ -590,13 +539,9 @@ elif st.session_state.current_page == "gestisci_spese":
         else:
             st.info("Nessuna spesa ricorrente registrata.")
 
-# Sidebar con funzioni di backup e info sicurezza
-st.sidebar.title("💾 Backup & Sicurezza")
+# Sidebar con funzioni di backup (specifiche per utente)
+st.sidebar.title("💾 Backup & Restore")
 st.sidebar.write(f"👤 **Utente:** {st.session_state.username}")
-
-# Indicatore sicurezza
-auth_status = "🔒 OAuth Google" if st.session_state.auth_method == "google" else "🚧 Demo Mode"
-st.sidebar.write(f"**Sicurezza:** {auth_status}")
 
 # Download backup
 if st.sidebar.button("📥 Scarica Backup"):
@@ -625,9 +570,7 @@ if uploaded_file is not None:
             st.sidebar.error("❌ Errore nel ripristino del backup!")
 
 st.sidebar.markdown("---")
-st.sidebar.markdown("🔒 **Sicurezza OAuth:**")
-st.sidebar.markdown("• ✅ Zero gestione password")
-st.sidebar.markdown("• ✅ Autenticazione Google")
-st.sidebar.markdown("• ✅ Dati isolati per utente")
-st.sidebar.markdown("• ✅ Nessun data leak credenziali")
-st.sidebar.markdown(f"• 📁 File: `{os.path.basename(DATA_FILE)}`")
+st.sidebar.markdown("🔒 **Sicurezza:**")
+st.sidebar.markdown("• I tuoi dati sono privati")
+st.sidebar.markdown("• File personale isolato")
+st.sidebar.markdown(f"• File: spese_data_{st.session_state.username}.json")
