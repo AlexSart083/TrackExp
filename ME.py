@@ -179,60 +179,46 @@ if st.session_state.current_page == "dashboard":
     with col3:
         st.metric("Totale Mese", f"€{totale_mese:.2f}")
     
-    # Grafici
-    if spese_mese or st.session_state.spese_ricorrenti:
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            # Grafico spese per categoria (spese giornaliere)
-            if spese_mese:
-                df_categorie = pd.DataFrame(spese_mese)
-                spese_per_categoria = df_categorie.groupby('categoria')['importo'].sum().reset_index()
-                
-                fig = px.pie(spese_per_categoria, values='importo', names='categoria', 
-                           title="Spese Giornaliere per Categoria")
-                st.plotly_chart(fig, use_container_width=True)
-            else:
-                st.info("Nessuna spesa giornaliera per questo mese")
-        
-        with col2:
-            # Grafico andamento giornaliero
-            if spese_mese:
-                df_giornaliero = pd.DataFrame(spese_mese)
-                df_giornaliero['data'] = pd.to_datetime(df_giornaliero['data'])
-                spese_per_giorno = df_giornaliero.groupby('data')['importo'].sum().reset_index()
-                
-                fig = px.line(spese_per_giorno, x='data', y='importo', 
-                            title="Andamento Spese Giornaliere")
-                st.plotly_chart(fig, use_container_width=True)
-            else:
-                st.info("Nessun dato per il grafico giornaliero")
-    
-    # Dettaglio spese del mese
+    # Elenco Completo Spese Giornaliere (prima sezione)
     if spese_mese:
-        st.subheader("Dettaglio Spese Giornaliere")
+        st.subheader("Elenco Completo Spese Giornaliere")
         df_mese = pd.DataFrame(spese_mese)
         df_mese['data'] = pd.to_datetime(df_mese['data']).dt.strftime('%d/%m/%Y')
+        st.dataframe(df_mese, use_container_width=True)
+    else:
+        st.info("Nessuna spesa giornaliera per questo mese")
+    
+    # Dettaglio Spese Giornaliere (seconda sezione con grafici)
+    if spese_mese:
+        st.subheader("Dettaglio Spese Giornaliere")
         
         # Raggruppa per categoria
-        spese_per_categoria = df_mese.groupby('categoria')['importo'].sum().reset_index()
+        df_categorie = pd.DataFrame(spese_mese)
+        spese_per_categoria = df_categorie.groupby('categoria')['importo'].sum().reset_index()
         spese_per_categoria = spese_per_categoria.sort_values('importo', ascending=False)
         
         col1, col2 = st.columns(2)
         
         with col1:
-            st.write("**Spese per categoria:**")
-            for _, row in spese_per_categoria.iterrows():
-                st.write(f"• {row['categoria']}: €{row['importo']:.2f}")
-        
-        with col2:
-            fig = px.bar(spese_per_categoria, x='categoria', y='importo',
-                        title="Spese per Categoria")
+            # Grafico spese per categoria
+            fig = px.pie(spese_per_categoria, values='importo', names='categoria', 
+                       title="Spese per Categoria")
             st.plotly_chart(fig, use_container_width=True)
         
-        # Tabella dettagliata
-        st.subheader("Elenco Completo Spese Giornaliere")
-        st.dataframe(df_mese, use_container_width=True)
+        with col2:
+            # Grafico andamento giornaliero
+            df_giornaliero = pd.DataFrame(spese_mese)
+            df_giornaliero['data'] = pd.to_datetime(df_giornaliero['data'])
+            spese_per_giorno = df_giornaliero.groupby('data')['importo'].sum().reset_index()
+            
+            fig = px.line(spese_per_giorno, x='data', y='importo', 
+                        title="Andamento Spese Giornaliere")
+            st.plotly_chart(fig, use_container_width=True)
+        
+        # Lista spese per categoria
+        st.write("**Riassunto per categoria:**")
+        for _, row in spese_per_categoria.iterrows():
+            st.write(f"• {row['categoria']}: €{row['importo']:.2f}")
     
     # Mostra spese ricorrenti se presenti
     if st.session_state.spese_ricorrenti:
