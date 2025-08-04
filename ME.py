@@ -519,7 +519,7 @@ def reset_form_fields():
 carica_dati()
 
 # Header con info utente sicuro e logout
-col1, col2, col3, col4 = st.columns([2, 1, 1, 1])
+col1, col2, col3, col4, col5 = st.columns([2, 1, 1, 1, 1])
 with col1:
     st.title("💸 Gestione Spese Mensili")
 with col2:
@@ -532,7 +532,11 @@ with col3:
         remaining_mins = int(remaining / 60)
         st.write(f"⏱️ {remaining_mins}min")
 with col4:
-    if st.button("🚪 Logout Sicuro"):
+    if st.button("🔒 Password"):
+        st.session_state.current_page = "change_password"
+        st.rerun()
+with col5:
+    if st.button("🚪 Logout"):
         st.session_state.authenticated = False
         st.session_state.username = None
         st.session_state.display_username = None
@@ -542,10 +546,97 @@ with col4:
         st.success("🔒 Logout effettuato con successo!")
         st.rerun()
 
-
+# PAGINA CAMBIO PASSWORD
+if st.session_state.current_page == "change_password":
+    col1, col2 = st.columns([1, 4])
+    with col1:
+        if st.button("🏠 Dashboard"):
+            st.session_state.current_page = "dashboard"
+            st.rerun()
+    
+    st.header("🔒 Cambia Password")
+    st.write(f"👤 **Utente:** {st.session_state.display_username}")
+    
+    # Controllo per messaggio di successo
+    if 'password_changed' in st.session_state and st.session_state.password_changed:
+        st.success("✅ Password cambiata con successo!")
+        st.info("🔒 Per sicurezza, effettua un nuovo login")
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("🔑 Vai al Login", key="go_to_login"):
+                st.session_state.authenticated = False
+                st.session_state.username = None
+                st.session_state.display_username = None
+                st.session_state.spese_giornaliere = []
+                st.session_state.spese_ricorrenti = []
+                st.session_state.current_page = "dashboard"
+                st.session_state.password_changed = False
+                st.rerun()
+        with col2:
+            if st.button("🏠 Torna alla Dashboard", key="back_to_dashboard"):
+                st.session_state.current_page = "dashboard"
+                st.session_state.password_changed = False
+                st.rerun()
+        
+        st.stop()
+    
+    st.markdown("---")
+    
+    with st.form("change_password_form"):
+        st.subheader("Modifica la tua password")
+        
+        current_password = st.text_input(
+            "Password Attuale", 
+            type="password",
+            help="Inserisci la tua password attuale per confermare l'identità"
+        )
+        
+        new_password = st.text_input(
+            "Nuova Password",
+            type="password",
+            help=f"Minimo {SECURITY_CONFIG['MIN_PASSWORD_LENGTH']} caratteri con lettere maiuscole, minuscole, numeri e caratteri speciali."
+        )
+        
+        confirm_new_password = st.text_input(
+            "Conferma Nuova Password", 
+            type="password",
+            help="Ripeti la nuova password per confermare"
+        )
+        
+        change_submitted = st.form_submit_button("🔄 Cambia Password", use_container_width=True)
+        
+        if change_submitted:
+            if current_password and new_password and confirm_new_password:
+                if new_password == confirm_new_password:
+                    success, message = change_password(
+                        st.session_state.username,
+                        current_password,
+                        new_password
+                    )
+                    if success:
+                        st.session_state.password_changed = True
+                        st.rerun()
+                    else:
+                        st.error(f"❌ {message}")
+                else:
+                    st.error("❌ Le nuove password non coincidono")
+            else:
+                st.error("❌ Compila tutti i campi")
+    
+    st.markdown("---")
+    st.info("""
+    🛡️ **Consigli per una password sicura:**
+    • Usa almeno 8 caratteri
+    • Includi lettere maiuscole e minuscole
+    • Aggiungi almeno un numero
+    • Usa caratteri speciali (!@#$%^&*(),.?":{}|<>)
+    • Non utilizzare informazioni personali
+    • Non riutilizzare password di altri account
+    """)
 
 # DASHBOARD (ex Resoconto Mensile)
-if st.session_state.current_page == "dashboard":
+elif st.session_state.current_page == "dashboard":
     # Pulsanti di navigazione
     col1, col2, col3 = st.columns([1, 1, 2])
     
@@ -560,41 +651,6 @@ if st.session_state.current_page == "dashboard":
             st.rerun()
     
     st.markdown("---")
-
-  # --- FORM CAMBIA PASSWORD ---
-    with st.expander("🔒 Cambia Password", expanded=False):
-        st.subheader("Cambia la tua password")
-        with st.form("change_password_form_dashboard"):
-            current_password = st.text_input("Password Attuale", type="password")
-            new_password = st.text_input(
-                "Nuova Password",
-                type="password",
-                help=f"Minimo {SECURITY_CONFIG['MIN_PASSWORD_LENGTH']} caratteri con lettere maiuscole, minuscole, numeri e caratteri speciali."
-            )
-            confirm_new_password = st.text_input("Conferma Nuova Password", type="password")
-            change_submitted = st.form_submit_button("Cambia Password")
-            if change_submitted:
-                if current_password and new_password and confirm_new_password:
-                    if new_password == confirm_new_password:
-                        success, message = change_password(
-                            st.session_state.username,
-                            current_password,
-                            new_password
-                        )
-                        if success:
-                            st.success(f"✅ {message}")
-                            st.info("🔒 Per sicurezza, effettua un nuovo login")
-                            st.session_state.authenticated = False
-                            st.session_state.username = None
-                            st.session_state.display_username = None
-                            time.sleep(2)
-                            st.rerun()
-                        else:
-                            st.error(f"❌ {message}")
-                    else:
-                        st.error("❌ Le nuove password non coincidono")
-                else:
-                    st.error("❌ Compila tutti i campi")
 
     # Dashboard - Resoconto Mensile
     st.header("📈 Dashboard - Resoconto Mensile")
