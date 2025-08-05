@@ -206,7 +206,7 @@ class LoginAttemptTracker:
     
     @staticmethod
     def is_locked_out(username):
-        """Controlla se utente è bloccato"""
+        """Controlla se utente è bloccato - ritorna tupla per compatibilità"""
         if 'login_attempts' not in st.session_state:
             st.session_state.login_attempts = {}
         
@@ -214,9 +214,11 @@ class LoginAttemptTracker:
         if attempts.get('count', 0) >= SecurityConfig.MAX_LOGIN_ATTEMPTS:
             lockout_time = attempts.get('lockout_time')
             if lockout_time and datetime.now() < lockout_time:
-                return True
+                remaining_seconds = (lockout_time - datetime.now()).total_seconds()
+                remaining_minutes = int(remaining_seconds / 60)
+                return True, remaining_minutes
         
-        return False
+        return False, 0
     
     @staticmethod
     def record_failed_attempt(username):
@@ -237,6 +239,20 @@ class LoginAttemptTracker:
         """Reset tentativi dopo login riuscito"""
         if 'login_attempts' in st.session_state and username in st.session_state.login_attempts:
             del st.session_state.login_attempts[username]
+    
+    @staticmethod
+    def get_remaining_lockout_time(username):
+        """Ottiene tempo rimanente di blocco"""
+        if 'login_attempts' not in st.session_state:
+            return 0
+        
+        attempts = st.session_state.login_attempts.get(username, {})
+        lockout_time = attempts.get('lockout_time')
+        if lockout_time and datetime.now() < lockout_time:
+            remaining_seconds = (lockout_time - datetime.now()).total_seconds()
+            return int(remaining_seconds / 60)
+        
+        return 0
 
 class FileManager:
     """File Manager - mantenuto per compatibilità ma ora non più necessario"""
@@ -250,6 +266,51 @@ class FileManager:
     def get_user_file_path(username):
         """Non più necessario con database"""
         return f"database_user_{username}"
+    
+    @staticmethod
+    def sanitize_username(username):
+        """Sanitizza username per compatibilità - ora semplicemente ritorna l'username"""
+        return username.strip().lower()
+    
+    @staticmethod
+    def username_exists(username):
+        """Controlla se username esiste - ora usa il database"""
+        try:
+            db = SupabaseDatabaseManager()
+            user = db.get_user(username)
+            return user is not None
+        except Exception:
+            return False
+    
+    @staticmethod
+    def save_user_data(username, password_hash, display_name=None):
+        """Salva dati utente - ora usa il database"""
+        try:
+            db = SupabaseDatabaseManager()
+            return db.save_user(username, password_hash, display_name)
+        except Exception:
+            return False
+    
+    @staticmethod
+    def load_user_data(username):
+        """Carica dati utente - ora usa il database"""
+        try:
+            db = SupabaseDatabaseManager()
+            return db.get_user(username)
+        except Exception:
+            return None
+    
+    @staticmethod
+    def verify_user_password(username, password):
+        """Verifica password utente - ora usa il database"""
+        try:
+            db = SupabaseDatabaseManager()
+            user = db.get_user(username)
+            if user:
+                return PasswordManager.verify_password(password, user['password_hash'])
+            return False
+        except Exception:
+            return False
 
 # Classi placeholder per compatibilità - sostituisci con le tue classi originali
 class PrivacyManager:
