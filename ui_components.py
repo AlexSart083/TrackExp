@@ -147,9 +147,9 @@ class LoginForm:
         • Dati utente isolati e protetti
         """)
     
-    @staticmethod
+@staticmethod
     def _show_login_tab():
-        """Tab per il login"""
+        """Tab per il login - versione semplificata"""
         st.subheader("Accedi al tuo account")
         with st.form("login_form"):
             username = st.text_input("Username")
@@ -158,32 +158,19 @@ class LoginForm:
             
             if login_submitted:
                 if username and password:
-                    from auth_security import FileManager
-                    username_clean = FileManager.sanitize_username(username)
+                    # Sanitizza username direttamente
+                    username_clean = username.strip().lower()
                     
-                    # Controlla se l'account è bloccato
-                    is_locked, remaining_time = LoginAttemptTracker.is_account_locked(username_clean)
-                    if is_locked:
-                        st.error(f"🚫 Account bloccato per troppi tentativi falliti. Riprova tra {remaining_time} secondi.")
+                    success, message = UserAuthenticator.authenticate_user(username, password)
+                    if success:
+                        st.session_state.authenticated = True
+                        st.session_state.username = username_clean
+                        st.session_state.display_username = username
+                        st.session_state.last_activity = time.time()
+                        st.success("✅ Login effettuato con successo!")
+                        st.rerun()
                     else:
-                        success, message = UserAuthenticator.authenticate_user(username, password)
-                        if success:
-                            st.session_state.authenticated = True
-                            st.session_state.username = username_clean
-                            st.session_state.display_username = username
-                            st.session_state.last_activity = time.time()
-                            st.success("✅ Login effettuato con successo!")
-                            st.rerun()
-                        else:
-                            st.error(f"❌ {message}")
-                            
-                            # Mostra informazioni sui tentativi rimanenti
-                            attempts_data = LoginAttemptTracker.load_login_attempts()
-                            if username_clean in attempts_data:
-                                failed_attempts = attempts_data[username_clean].get('failed_attempts', 0)
-                                remaining_attempts = SecurityConfig.MAX_LOGIN_ATTEMPTS - failed_attempts
-                                if remaining_attempts > 0:
-                                    st.warning(f"⚠️ Tentativi rimanenti: {remaining_attempts}")
+                        st.error(f"❌ {message}")
                 else:
                     st.error("❌ Inserisci username e password")
     
