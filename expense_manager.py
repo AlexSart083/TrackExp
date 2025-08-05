@@ -166,9 +166,7 @@ class DataManager:
         try:
             db = SupabaseDatabaseManager()
             success = db.save_expense_data(username, spese_giornaliere, spese_ricorrenti, conti)
-            if not success:
-                raise Exception("Errore durante il salvataggio nel database")
-            return True
+            return success
         except Exception as e:
             raise Exception(f"Errore nel salvataggio dei dati: {e}")
     
