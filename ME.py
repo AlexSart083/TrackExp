@@ -8,6 +8,7 @@ import pandas as pd
 import calendar
 import time
 from datetime import datetime, date
+from database_manager import SupabaseDatabaseManager
 import plotly.express as px
 
 # Import dei moduli personalizzati
@@ -51,6 +52,36 @@ class ExpenseApp:
         for key, value in default_values.items():
             if key not in st.session_state:
                 st.session_state[key] = value
+        def initialize_database(self):
+            """Inizializza il database al primo avvio"""
+            if 'database_initialized' not in st.session_state:
+                try:
+                    with st.spinner("🔄 Connessione al database..."):
+                        db = SupabaseDatabaseManager()
+                        db.init_database()
+                        st.session_state.database_initialized = True
+                        
+                        # Mostra statistiche database nella sidebar
+                        user_count = db.get_user_count()
+                        if user_count > 0:
+                            st.sidebar.success(f"🗄️ Database connesso! ({user_count} utenti registrati)")
+                        else:
+                            st.sidebar.info("🗄️ Database connesso! Nessun utente registrato")
+                            
+                except Exception as e:
+                    st.error(f"❌ Errore connessione database: {e}")
+                    st.error("**Verifica la configurazione nei Secrets:**")
+                    st.code("""
+        [database]
+        url = "postgresql://postgres:CUeAjYUmdwpjZjd0@db.eyxvgdmagmvcgbxadhnb.supabase.co:5432/postgres"
+        
+        [encryption] 
+        secret_key = "fSEDqIau4R27THxBKpAz5Ey1cC6Ygb0b"
+        
+        [auth]
+        session_timeout_minutes = 30
+                    """)
+                    st.stop()                
     
     def check_authentication(self):
         """Controlla l'autenticazione e il timeout della sessione"""
@@ -673,6 +704,8 @@ class ExpenseApp:
     def run(self):
         """Avvia l'applicazione"""
         # Controlla autenticazione
+        self.initialize_database()
+        
         self.check_authentication()
         
         # Carica dati utente
