@@ -416,6 +416,8 @@ if 'spese_giornaliere' not in st.session_state:
     st.session_state.spese_giornaliere = []
 if 'spese_ricorrenti' not in st.session_state:
     st.session_state.spese_ricorrenti = []
+if 'conti' not in st.session_state:
+    st.session_state.conti = []
 if 'current_page' not in st.session_state:
     st.session_state.current_page = "dashboard"
 
@@ -426,6 +428,7 @@ if st.session_state.authenticated and check_session_timeout():
     st.session_state.display_username = None
     st.session_state.spese_giornaliere = []
     st.session_state.spese_ricorrenti = []
+    st.session_state.conti = []
     st.session_state.current_page = "dashboard"
     st.error("🕐 Sessione scaduta per inattività. Effettua nuovamente il login.")
     st.rerun()
@@ -438,12 +441,80 @@ if not st.session_state.authenticated:
 # Se arrivati qui, l'utente è autenticato
 DATA_FILE = get_user_data_file(st.session_state.username)
 
-# Funzioni per il salvataggio e caricamento dei dati (identiche al codice originale)
+# NUOVE FUNZIONI PER LA GESTIONE DEI CONTI
+def aggiungi_conto(nome, descrizione, tipo_conto="Personale"):
+    """Aggiunge un nuovo conto"""
+    conto = {
+        'id': len(st.session_state.conti) + 1,
+        'nome': nome,
+        'descrizione': descrizione,
+        'tipo': tipo_conto,
+        'creato_il': datetime.now().isoformat()
+    }
+    st.session_state.conti.append(conto)
+    salva_dati()
+    return True
+
+def elimina_conto(indice):
+    """Elimina un conto"""
+    if 0 <= indice < len(st.session_state.conti):
+        conto_eliminato = st.session_state.conti[indice]
+        
+        # Verifica se il conto è utilizzato in qualche spesa
+        conto_nome = conto_eliminato['nome']
+        spese_con_conto = [s for s in st.session_state.spese_giornaliere if s.get('conto') == conto_nome]
+        spese_ricorrenti_con_conto = [s for s in st.session_state.spese_ricorrenti if s.get('conto') == conto_nome]
+        
+        if spese_con_conto or spese_ricorrenti_con_conto:
+            return False, f"Impossibile eliminare il conto '{conto_nome}'. È utilizzato in {len(spese_con_conto)} spese giornaliere e {len(spese_ricorrenti_con_conto)} spese ricorrenti."
+        
+        st.session_state.conti.pop(indice)
+        salva_dati()
+        return True, "Conto eliminato con successo"
+    return False, "Errore nell'eliminazione del conto"
+
+def get_conti_options():
+    """Restituisce le opzioni dei conti per i selectbox"""
+    if not st.session_state.conti:
+        return ["Nessun conto configurato"]
+    return [conto['nome'] for conto in st.session_state.conti]
+
+def calcola_spese_per_conto(mese, anno):
+    """Calcola le spese per conto per un mese specifico"""
+    spese_mese = filtra_spese_per_mese(mese, anno)
+    totale_ricorrenti_mese = calcola_spese_ricorrenti_mensili(mese, anno)
+    
+    # Raggruppa spese giornaliere per conto
+    spese_per_conto = {}
+    for spesa in spese_mese:
+        conto = spesa.get('conto', 'Non specificato')
+        if conto not in spese_per_conto:
+            spese_per_conto[conto] = {'giornaliere': 0, 'ricorrenti': 0}
+        spese_per_conto[conto]['giornaliere'] += spesa['importo']
+    
+    # Aggiungi spese ricorrenti per conto
+    for spesa in st.session_state.spese_ricorrenti:
+        conto = spesa.get('conto', 'Non specificato')
+        if conto not in spese_per_conto:
+            spese_per_conto[conto] = {'giornaliere': 0, 'ricorrenti': 0}
+        
+        importo_mensile = spesa['importo']
+        if spesa['frequenza'] == 'Settimanale':
+            importo_mensile *= 4.33
+        elif spesa['frequenza'] == 'Annuale':
+            importo_mensile /= 12
+            
+        spese_per_conto[conto]['ricorrenti'] += importo_mensile
+    
+    return spese_per_conto
+
+# Funzioni per il salvataggio e caricamento dei dati (aggiornate per includere i conti)
 def salva_dati():
     """Salva i dati in un file JSON specifico per utente"""
     data = {
         'spese_giornaliere': st.session_state.spese_giornaliere,
-        'spese_ricorrenti': st.session_state.spese_ricorrenti
+        'spese_ricorrenti': st.session_state.spese_ricorrenti,
+        'conti': st.session_state.conti  # NUOVO: salva anche i conti
     }
     with open(DATA_FILE, 'w', encoding='utf-8') as f:
         json.dump(data, f, ensure_ascii=False, indent=2, default=str)
@@ -456,6 +527,7 @@ def carica_dati():
                 data = json.load(f)
                 st.session_state.spese_giornaliere = data.get('spese_giornaliere', [])
                 st.session_state.spese_ricorrenti = data.get('spese_ricorrenti', [])
+                st.session_state.conti = data.get('conti', [])  # NUOVO: carica anche i conti
         except Exception as e:
             st.error(f"Errore nel caricamento dei dati: {e}")
 
@@ -465,30 +537,33 @@ def carica_backup(file_content):
         data = json.loads(file_content)
         st.session_state.spese_giornaliere = data.get('spese_giornaliere', [])
         st.session_state.spese_ricorrenti = data.get('spese_ricorrenti', [])
+        st.session_state.conti = data.get('conti', [])  # NUOVO: carica anche i conti dal backup
         salva_dati()
         return True
     except Exception as e:
         st.error(f"Errore nel caricamento del backup: {e}")
         return False
 
-def aggiungi_spesa_giornaliera(data, categoria, descrizione, importo):
-    """Aggiunge una spesa giornaliera"""
+def aggiungi_spesa_giornaliera(data, categoria, descrizione, importo, conto=None):
+    """Aggiunge una spesa giornaliera (aggiornata per includere il conto)"""
     spesa = {
         'data': data.strftime('%Y-%m-%d'),
         'categoria': categoria,
         'descrizione': descrizione,
-        'importo': float(importo)
+        'importo': float(importo),
+        'conto': conto  # NUOVO: campo conto
     }
     st.session_state.spese_giornaliere.append(spesa)
     salva_dati()
 
-def aggiungi_spesa_ricorrente(nome, categoria, importo, frequenza):
-    """Aggiunge una spesa ricorrente"""
+def aggiungi_spesa_ricorrente(nome, categoria, importo, frequenza, conto=None):
+    """Aggiunge una spesa ricorrente (aggiornata per includere il conto)"""
     spesa = {
         'nome': nome,
         'categoria': categoria,
         'importo': float(importo),
-        'frequenza': frequenza
+        'frequenza': frequenza,
+        'conto': conto  # NUOVO: campo conto
     }
     st.session_state.spese_ricorrenti.append(spesa)
     salva_dati()
@@ -542,7 +617,7 @@ def reset_form_fields():
 carica_dati()
 
 # Header con info utente sicuro e logout
-col1, col2, col3, col4, col5, col6 = st.columns([2, 1, 1, 1, 1, 1])
+col1, col2, col3, col4, col5, col6, col7 = st.columns([2, 1, 1, 1, 1, 1, 1])
 with col1:
     st.title("💸 Gestione Spese Mensili")
 with col2:
@@ -555,26 +630,144 @@ with col3:
         remaining_mins = int(remaining / 60)
         st.write(f"⏱️ {remaining_mins}min")
 with col4:
+    if st.button("🏦 Conti"):
+        st.session_state.current_page = "gestisci_conti"
+        st.rerun()
+with col5:
     if st.button("🔒 Password"):
         st.session_state.current_page = "change_password"
         st.rerun()
-with col5:
+with col6:
     if st.button("🛡️ Privacy"):
         st.session_state.current_page = "privacy_info"
         st.rerun()
-with col6:
+with col7:
     if st.button("🚪 Logout"):
         st.session_state.authenticated = False
         st.session_state.username = None
         st.session_state.display_username = None
         st.session_state.spese_giornaliere = []
         st.session_state.spese_ricorrenti = []
+        st.session_state.conti = []
         st.session_state.current_page = "dashboard"
         st.success("🔒 Logout effettuato con successo!")
         st.rerun()
 
+# NUOVA PAGINA: GESTIONE CONTI
+if st.session_state.current_page == "gestisci_conti":
+    col1, col2 = st.columns([1, 4])
+    with col1:
+        if st.button("🏠 Dashboard"):
+            st.session_state.current_page = "dashboard"
+            st.rerun()
+    
+    st.header("🏦 Gestisci Conti")
+    st.write(f"👤 **Utente:** {st.session_state.display_username}")
+    
+    tab1, tab2 = st.tabs(["➕ Aggiungi Conto", "📋 Visualizza Conti"])
+    
+    with tab1:
+        st.subheader("Aggiungi Nuovo Conto")
+        
+        # Controllo per messaggio di successo
+        if 'conto_aggiunto' in st.session_state and st.session_state.conto_aggiunto:
+            st.success("✅ Conto aggiunto con successo!")
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("➕ Aggiungi altro conto", key="altro_conto"):
+                    st.session_state.conto_aggiunto = False
+                    st.rerun()
+            with col2:
+                if st.button("📋 Visualizza conti", key="visualizza_conti"):
+                    st.session_state.conto_aggiunto = False
+                    st.rerun()
+            
+            st.stop()
+        
+        with st.form("form_nuovo_conto"):
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                nome_conto = st.text_input(
+                    "Nome Conto *", 
+                    placeholder="es. Carta Principale, Conto Corrente, PayPal...",
+                    help="Nome identificativo del conto"
+                )
+                tipo_conto = st.selectbox(
+                    "Tipo Conto", 
+                    ["Personale", "Aziendale", "Famiglia", "Risparmi", "Investimenti", "Altro"]
+                )
+            
+            with col2:
+                descrizione_conto = st.text_area(
+                    "Descrizione", 
+                    placeholder="es. Carta di credito principale per spese quotidiane",
+                    help="Descrizione opzionale del conto"
+                )
+            
+            submitted_conto = st.form_submit_button("💾 Aggiungi Conto", use_container_width=True)
+            
+            if submitted_conto:
+                if nome_conto.strip():
+                    # Controlla se esiste già un conto con lo stesso nome
+                    nomi_esistenti = [conto['nome'].lower() for conto in st.session_state.conti]
+                    if nome_conto.lower() in nomi_esistenti:
+                        st.error("❌ Esiste già un conto con questo nome!")
+                    else:
+                        aggiungi_conto(nome_conto.strip(), descrizione_conto.strip(), tipo_conto)
+                        st.session_state.conto_aggiunto = True
+                        st.rerun()
+                else:
+                    st.error("❌ Il nome del conto è obbligatorio!")
+    
+    with tab2:
+        st.subheader("I Tuoi Conti")
+        
+        if st.session_state.conti:
+            st.write("**Clicca sull'icona del cestino per eliminare un conto**")
+            st.warning("⚠️ **Attenzione**: Non puoi eliminare un conto che è utilizzato in una o più spese.")
+            
+            for idx, conto in enumerate(st.session_state.conti):
+                col1, col2, col3, col4, col5 = st.columns([3, 2, 4, 2, 1])
+                
+                with col1:
+                    st.write(f"**{conto['nome']}**")
+                with col2:
+                    st.write(f"_{conto['tipo']}_")
+                with col3:
+                    if conto['descrizione']:
+                        st.write(conto['descrizione'])
+                    else:
+                        st.write("_Nessuna descrizione_")
+                with col4:
+                    data_creazione = datetime.fromisoformat(conto['creato_il']).strftime('%d/%m/%Y')
+                    st.write(f"🕐 {data_creazione}")
+                with col5:
+                    if st.button("🗑️", key=f"del_conto_{idx}"):
+                        success, message = elimina_conto(idx)
+                        if success:
+                            st.success("Conto eliminato!")
+                            st.rerun()
+                        else:
+                            st.error(message)
+            
+            st.markdown("---")
+            st.info(f"📊 **Totale conti configurati:** {len(st.session_state.conti)}")
+        else:
+            st.info("🏦 Nessun conto configurato. Aggiungi il tuo primo conto!")
+            st.markdown("""
+            **Suggerimenti per i conti:**
+            - Carta di credito principale
+            - Conto corrente
+            - PayPal
+            - Contanti
+            - Carta prepagata
+            - Conto aziendale
+            """)
+
 # PAGINA INFORMAZIONI PRIVACY
-if st.session_state.current_page == "privacy_info":
+elif st.session_state.current_page == "privacy_info":
     col1, col2 = st.columns([1, 4])
     with col1:
         if st.button("🏠 Dashboard"):
@@ -691,6 +884,7 @@ elif st.session_state.current_page == "change_password":
                 st.session_state.display_username = None
                 st.session_state.spese_giornaliere = []
                 st.session_state.spese_ricorrenti = []
+                st.session_state.conti = []
                 st.session_state.current_page = "dashboard"
                 st.session_state.password_changed = False
                 st.rerun()
@@ -756,7 +950,7 @@ elif st.session_state.current_page == "change_password":
     • Non riutilizzare password di altri account
     """)
 
-# DASHBOARD (ex Resoconto Mensile)
+# DASHBOARD (ex Resoconto Mensile) - AGGIORNATA CON TABELLA SPESE PER CONTO
 elif st.session_state.current_page == "dashboard":
     # Pulsanti di navigazione
     col1, col2, col3 = st.columns([1, 1, 2])
@@ -804,18 +998,68 @@ elif st.session_state.current_page == "dashboard":
     with col3:
         st.metric("Totale Mese", f"€{totale_mese:.2f}")
     
+    # NUOVA SEZIONE: Spese per Conto
+    st.subheader("💳 Spese per Conto")
+    
+    if st.session_state.conti:
+        spese_per_conto = calcola_spese_per_conto(mese_selezionato, anno_selezionato)
+        
+        if spese_per_conto:
+            # Crea DataFrame per la tabella
+            tabella_conti = []
+            for conto, importi in spese_per_conto.items():
+                totale_conto = importi['giornaliere'] + importi['ricorrenti']
+                tabella_conti.append({
+                    'Conto': conto,
+                    'Spese Giornaliere': f"€{importi['giornaliere']:.2f}",
+                    'Spese Ricorrenti': f"€{importi['ricorrenti']:.2f}",
+                    'Totale': f"€{totale_conto:.2f}"
+                })
+            
+            # Ordina per totale decrescente
+            tabella_conti.sort(key=lambda x: float(x['Totale'].replace('€', '').replace(',', '.')), reverse=True)
+            
+            # Mostra la tabella
+            df_conti = pd.DataFrame(tabella_conti)
+            st.dataframe(df_conti, use_container_width=True)
+            
+            # Grafico spese per conto
+            if len(spese_per_conto) > 1:
+                dati_grafico = []
+                for conto, importi in spese_per_conto.items():
+                    totale_conto = importi['giornaliere'] + importi['ricorrenti']
+                    if totale_conto > 0:
+                        dati_grafico.append({'Conto': conto, 'Importo': totale_conto})
+                
+                if dati_grafico:
+                    df_grafico = pd.DataFrame(dati_grafico)
+                    fig = px.pie(df_grafico, values='Importo', names='Conto', 
+                               title="Distribuzione Spese per Conto")
+                    st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("📝 Nessuna spesa registrata per questo mese con i conti configurati.")
+    else:
+        st.warning("🏦 **Nessun conto configurato!** Vai su 'Conti' per configurare i tuoi conti di pagamento.")
+        if st.button("🏦 Configura Conti Ora"):
+            st.session_state.current_page = "gestisci_conti"
+            st.rerun()
+    
     # Elenco Completo Spese Giornaliere (prima sezione)
     if spese_mese:
-        st.subheader("Elenco Completo Spese Giornaliere")
+        st.subheader("📋 Elenco Completo Spese Giornaliere")
         df_mese = pd.DataFrame(spese_mese)
         df_mese['data'] = pd.to_datetime(df_mese['data']).dt.strftime('%d/%m/%Y')
+        # Riordina le colonne per mostrare anche il conto
+        cols_order = ['data', 'categoria', 'descrizione', 'importo', 'conto']
+        df_mese = df_mese.reindex(columns=cols_order)
+        df_mese.columns = ['Data', 'Categoria', 'Descrizione', 'Importo', 'Conto']
         st.dataframe(df_mese, use_container_width=True)
     else:
-        st.info("Nessuna spesa giornaliera per questo mese")
+        st.info("📝 Nessuna spesa giornaliera per questo mese")
     
     # Dettaglio Spese Giornaliere (seconda sezione con grafici)
     if spese_mese:
-        st.subheader("Dettaglio Spese Giornaliere")
+        st.subheader("📊 Dettaglio Spese Giornaliere")
         
         # Raggruppa per categoria
         df_categorie = pd.DataFrame(spese_mese)
@@ -834,7 +1078,7 @@ elif st.session_state.current_page == "dashboard":
     
     # Mostra spese ricorrenti se presenti
     if st.session_state.spese_ricorrenti:
-        st.subheader("Spese Ricorrenti Attive")
+        st.subheader("🔄 Spese Ricorrenti Attive")
         ricorrenti_df = []
         for spesa in st.session_state.spese_ricorrenti:
             importo_mensile = spesa['importo']
@@ -848,13 +1092,14 @@ elif st.session_state.current_page == "dashboard":
                 'Categoria': spesa['categoria'],
                 'Importo Originale': f"€{spesa['importo']:.2f}",
                 'Frequenza': spesa['frequenza'],
+                'Conto': spesa.get('conto', 'Non specificato'),
                 'Importo Mensile': f"€{importo_mensile:.2f}"
             })
         
         if ricorrenti_df:
             st.dataframe(pd.DataFrame(ricorrenti_df), use_container_width=True)
 
-# AGGIUNGI SPESA
+# AGGIUNGI SPESA - AGGIORNATA CON SELEZIONE CONTO
 elif st.session_state.current_page == "aggiungi_spesa":
     col1, col2 = st.columns([1, 4])
     with col1:
@@ -864,7 +1109,18 @@ elif st.session_state.current_page == "aggiungi_spesa":
     
     st.header("➕ Aggiungi Nuova Spesa")
     
-    tab1, tab2 = st.tabs(["Spesa Giornaliera", "Spesa Ricorrente"])
+    # Controllo se ci sono conti configurati
+    if not st.session_state.conti:
+        st.warning("⚠️ **Nessun conto configurato!** Configura almeno un conto prima di aggiungere spese.")
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("🏦 Configura Conti", use_container_width=True):
+                st.session_state.current_page = "gestisci_conti"
+                st.rerun()
+        with col2:
+            st.info("Puoi comunque aggiungere spese, ma non sarà specificato il conto di pagamento.")
+    
+    tab1, tab2 = st.tabs(["💰 Spesa Giornaliera", "🔄 Spesa Ricorrente"])
     
     with tab1:
         st.subheader("Spesa Giornaliera")
@@ -896,20 +1152,26 @@ elif st.session_state.current_page == "aggiungi_spesa":
                 categoria = st.selectbox("Categoria", 
                     ["Alimentari", "Trasporti", "Bollette", "Intrattenimento", 
                      "Salute", "Abbigliamento", "Casa", "Altro"])
+                # NUOVO: Selezione conto
+                opzioni_conti = get_conti_options()
+                conto_selezionato = st.selectbox("Conto di Pagamento", 
+                    ["Nessuno"] + opzioni_conti if opzioni_conti != ["Nessun conto configurato"] else ["Nessuno"],
+                    help="Seleziona il conto da cui è stata effettuata la spesa")
             
             with col2:
                 descrizione = st.text_input("Descrizione")
                 importo = st.number_input("Importo (€)", min_value=0.01, step=0.01)
             
-            submitted = st.form_submit_button("Aggiungi Spesa")
+            submitted = st.form_submit_button("💾 Aggiungi Spesa", use_container_width=True)
             
             if submitted:
                 if descrizione and importo > 0:
-                    aggiungi_spesa_giornaliera(data_spesa, categoria, descrizione, importo)
+                    conto_finale = None if conto_selezionato == "Nessuno" else conto_selezionato
+                    aggiungi_spesa_giornaliera(data_spesa, categoria, descrizione, importo, conto_finale)
                     st.session_state.spesa_aggiunta = True
                     st.rerun()
                 else:
-                    st.error("Compila tutti i campi correttamente!")
+                    st.error("❌ Compila tutti i campi correttamente!")
     
     with tab2:
         st.subheader("Spesa Ricorrente")
@@ -941,22 +1203,29 @@ elif st.session_state.current_page == "aggiungi_spesa":
                 categoria_ricorrente = st.selectbox("Categoria", 
                     ["Bollette", "Abbonamenti", "Assicurazioni", "Affitto", 
                      "Trasporti", "Altro"], key="cat_ricorrente")
+                # NUOVO: Selezione conto per spese ricorrenti
+                opzioni_conti = get_conti_options()
+                conto_ricorrente = st.selectbox("Conto di Pagamento", 
+                    ["Nessuno"] + opzioni_conti if opzioni_conti != ["Nessun conto configurato"] else ["Nessuno"],
+                    help="Seleziona il conto da cui viene addebitata la spesa ricorrente",
+                    key="conto_ric")
             
             with col2:
                 importo_ricorrente = st.number_input("Importo (€)", min_value=0.01, step=0.01, key="importo_ricorrente")
                 frequenza = st.selectbox("Frequenza", ["Settimanale", "Mensile", "Annuale"])
             
-            submitted_ricorrente = st.form_submit_button("Aggiungi Spesa Ricorrente")
+            submitted_ricorrente = st.form_submit_button("💾 Aggiungi Spesa Ricorrente", use_container_width=True)
             
             if submitted_ricorrente:
                 if nome_ricorrente and importo_ricorrente > 0:
-                    aggiungi_spesa_ricorrente(nome_ricorrente, categoria_ricorrente, importo_ricorrente, frequenza)
+                    conto_finale = None if conto_ricorrente == "Nessuno" else conto_ricorrente
+                    aggiungi_spesa_ricorrente(nome_ricorrente, categoria_ricorrente, importo_ricorrente, frequenza, conto_finale)
                     st.session_state.spesa_ricorrente_aggiunta = True
                     st.rerun()
                 else:
-                    st.error("Compila tutti i campi correttamente!")
+                    st.error("❌ Compila tutti i campi correttamente!")
 
-# GESTISCI SPESE
+# GESTISCI SPESE - AGGIORNATA PER MOSTRARE ANCHE I CONTI
 elif st.session_state.current_page == "gestisci_spese":
     col1, col2 = st.columns([1, 4])
     with col1:
@@ -966,7 +1235,7 @@ elif st.session_state.current_page == "gestisci_spese":
     
     st.header("🗂️ Gestisci Spese")
     
-    tab1, tab2 = st.tabs(["Spese Giornaliere", "Spese Ricorrenti"])
+    tab1, tab2 = st.tabs(["💰 Spese Giornaliere", "🔄 Spese Ricorrenti"])
     
     with tab1:
         st.subheader("Spese Giornaliere")
@@ -976,13 +1245,18 @@ elif st.session_state.current_page == "gestisci_spese":
             df['data'] = pd.to_datetime(df['data']).dt.strftime('%d/%m/%Y')
             
             # Filtri
-            col1, col2 = st.columns(2)
+            col1, col2, col3 = st.columns(3)
             with col1:
                 categorie_filtro = st.multiselect("Filtra per categoria", 
                     df['categoria'].unique(), default=df['categoria'].unique())
             with col2:
                 mese_filtro = st.selectbox("Filtra per mese", 
                     ["Tutti"] + [calendar.month_name[i] for i in range(1, 13)])
+            with col3:
+                # NUOVO: Filtro per conto
+                conti_unici = df['conto'].fillna('Non specificato').unique()
+                conto_filtro = st.multiselect("Filtra per conto",
+                    conti_unici, default=conti_unici)
             
             # Applica filtri
             df_filtrato = df[df['categoria'].isin(categorie_filtro)]
@@ -990,10 +1264,13 @@ elif st.session_state.current_page == "gestisci_spese":
                 mese_num = list(calendar.month_name).index(mese_filtro)
                 df_filtrato = df_filtrato[pd.to_datetime(df_filtrato['data'], format='%d/%m/%Y').dt.month == mese_num]
             
+            # Applica filtro conto
+            df_filtrato = df_filtrato[df_filtrato['conto'].fillna('Non specificato').isin(conto_filtro)]
+            
             # Mostra tabella con opzione di eliminazione
             st.write("**Clicca sull'icona del cestino per eliminare una spesa**")
             for idx, spesa in df_filtrato.iterrows():
-                col1, col2, col3, col4, col5 = st.columns([2, 2, 3, 2, 1])
+                col1, col2, col3, col4, col5, col6 = st.columns([2, 2, 3, 2, 2, 1])
                 with col1:
                     st.write(spesa['data'])
                 with col2:
@@ -1003,6 +1280,11 @@ elif st.session_state.current_page == "gestisci_spese":
                 with col4:
                     st.write(f"€{spesa['importo']:.2f}")
                 with col5:
+                    conto_display = spesa.get('conto', 'Non specificato')
+                    if pd.isna(conto_display) or conto_display is None:
+                        conto_display = 'Non specificato'
+                    st.write(conto_display)
+                with col6:
                     if st.button("🗑️", key=f"del_g_{idx}"):
                         elimina_spesa_giornaliera(idx)
                         st.success("Spesa eliminata!")
@@ -1018,7 +1300,7 @@ elif st.session_state.current_page == "gestisci_spese":
         if st.session_state.spese_ricorrenti:
             st.write("**Clicca sull'icona del cestino per eliminare una spesa ricorrente**")
             for idx, spesa in enumerate(st.session_state.spese_ricorrenti):
-                col1, col2, col3, col4, col5 = st.columns([3, 2, 2, 2, 1])
+                col1, col2, col3, col4, col5, col6 = st.columns([3, 2, 2, 2, 2, 1])
                 with col1:
                     st.write(spesa['nome'])
                 with col2:
@@ -1028,6 +1310,11 @@ elif st.session_state.current_page == "gestisci_spese":
                 with col4:
                     st.write(spesa['frequenza'])
                 with col5:
+                    conto_display = spesa.get('conto', 'Non specificato')
+                    if pd.isna(conto_display) or conto_display is None:
+                        conto_display = 'Non specificato'
+                    st.write(conto_display)
+                with col6:
                     if st.button("🗑️", key=f"del_r_{idx}"):
                         elimina_spesa_ricorrente(idx)
                         st.success("Spesa ricorrente eliminata!")
@@ -1070,6 +1357,21 @@ st.sidebar.markdown("🔒 **Sicurezza:**")
 st.sidebar.markdown("• I tuoi dati sono privati")
 st.sidebar.markdown("• File personale isolato")
 st.sidebar.markdown(f"• File: spese_data_{st.session_state.username}.json")
+
+# Info conti nella sidebar
+st.sidebar.markdown("---")
+st.sidebar.markdown("🏦 **I Tuoi Conti:**")
+if st.session_state.conti:
+    for conto in st.session_state.conti[:3]:  # Mostra max 3 conti
+        st.sidebar.markdown(f"• {conto['nome']}")
+    if len(st.session_state.conti) > 3:
+        st.sidebar.markdown(f"• ... e altri {len(st.session_state.conti) - 3}")
+    st.sidebar.markdown(f"**Totale: {len(st.session_state.conti)} conti**")
+else:
+    st.sidebar.markdown("• Nessun conto configurato")
+    if st.sidebar.button("🏦 Configura Ora"):
+        st.session_state.current_page = "gestisci_conti"
+        st.rerun()
 
 # Disclaimer Privacy nella sidebar
 st.sidebar.markdown("---")
