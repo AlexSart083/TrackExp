@@ -1,6 +1,6 @@
 """
 Modulo per autenticazione e sicurezza - Versione Database Completa
-Sostituisce completamente il vecchio auth_security.py
+Include tutte le classi necessarie per compatibilità
 """
 
 import streamlit as st
@@ -14,6 +14,13 @@ class SecurityConfig:
     SESSION_TIMEOUT = int(st.secrets.get("auth", {}).get("session_timeout_minutes", 30))
     MAX_LOGIN_ATTEMPTS = 5
     LOCKOUT_TIME = 15  # minuti
+    
+    # Proprietà per compatibilità con ui_components.py
+    MIN_PASSWORD_LENGTH = 8
+    REQUIRE_UPPERCASE = True
+    REQUIRE_LOWERCASE = True
+    REQUIRE_DIGITS = True
+    REQUIRE_SPECIAL_CHARS = True
     
     @staticmethod
     def hash_password(password):
@@ -244,8 +251,226 @@ class FileManager:
         """Non più necessario con database"""
         return f"database_user_{username}"
 
-# Mantieni anche le altre classi che esistono nel tuo auth_security.py originale
-# come PrivacyManager, FormComponents, UIHelpers, StateManager, LoginForm
-# COPIA TUTTO IL RESTO dal tuo auth_security.py esistente qui sotto:
+# Classi placeholder per compatibilità - sostituisci con le tue classi originali
+class PrivacyManager:
+    """Placeholder - copia la tua classe originale qui"""
+    @staticmethod
+    def show_detailed_privacy_page():
+        st.write("Privacy Manager - da implementare")
 
-# [PLACEHOLDER: Copia qui tutte le altre classi dal tuo auth_security.py originale]
+class FormComponents:
+    """Placeholder - copia la tua classe originale qui"""
+    @staticmethod
+    def show_success_message_with_actions(message, action1_text, action1_key, action2_text, action2_key):
+        st.success(message)
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button(action1_text, key=action1_key):
+                return "action1"
+        with col2:
+            if st.button(action2_text, key=action2_key):
+                return "action2"
+        return None
+    
+    @staticmethod
+    def show_account_form():
+        with st.form("account_form"):
+            nome_conto = st.text_input("Nome del conto")
+            descrizione_conto = st.text_area("Descrizione (opzionale)")
+            tipo_conto = st.selectbox("Tipo di conto", ["Carta di credito", "Conto corrente", "PayPal", "Contanti", "Altro"])
+            submitted = st.form_submit_button("Aggiungi Conto")
+        return submitted, nome_conto, descrizione_conto, tipo_conto
+    
+    @staticmethod
+    def show_change_password_form():
+        with st.form("change_password_form"):
+            current_password = st.text_input("Password corrente", type="password")
+            new_password = st.text_input("Nuova password", type="password")
+            confirm_new_password = st.text_input("Conferma nuova password", type="password")
+            submitted = st.form_submit_button("Cambia Password")
+        return submitted, current_password, new_password, confirm_new_password
+    
+    @staticmethod
+    def show_expense_form(conti_options, tipo_form):
+        if tipo_form == "giornaliera":
+            with st.form("expense_form"):
+                data = st.date_input("Data")
+                categoria = st.selectbox("Categoria", ["Alimentari", "Trasporti", "Casa", "Salute", "Svago", "Altro"])
+                descrizione = st.text_input("Descrizione")
+                importo = st.number_input("Importo (€)", min_value=0.01, step=0.01)
+                conto = st.selectbox("Conto", conti_options)
+                submitted = st.form_submit_button("Aggiungi Spesa")
+            return submitted, {
+                'data': data,
+                'categoria': categoria,
+                'descrizione': descrizione,
+                'importo': importo,
+                'conto': conto
+            }
+        else:  # ricorrente
+            with st.form("recurring_expense_form"):
+                nome = st.text_input("Nome della spesa")
+                categoria = st.selectbox("Categoria", ["Alimentari", "Trasporti", "Casa", "Salute", "Svago", "Altro"])
+                importo = st.number_input("Importo (€)", min_value=0.01, step=0.01)
+                frequenza = st.selectbox("Frequenza", ["Mensile", "Settimanale", "Annuale"])
+                conto = st.selectbox("Conto", conti_options)
+                submitted = st.form_submit_button("Aggiungi Spesa Ricorrente")
+            return submitted, {
+                'nome': nome,
+                'categoria': categoria,
+                'importo': importo,
+                'frequenza': frequenza,
+                'conto': conto
+            }
+
+class UIHelpers:
+    """Placeholder - copia la tua classe originale qui"""
+    @staticmethod
+    def show_header_with_user_info(display_name, remaining_mins):
+        st.title("💸 Gestione Spese Mensili")
+        col1, col2, col3, col4, col5 = st.columns([2, 1, 1, 1, 1])
+        
+        with col1:
+            st.write(f"👤 **Benvenuto, {display_name}!**")
+            st.write(f"⏰ Sessione: {remaining_mins} min rimanenti")
+        
+        with col2:
+            if st.button("🏦 Conti"):
+                return "conti"
+        with col3:
+            if st.button("🔒 Password"):
+                return "password"
+        with col4:
+            if st.button("🛡️ Privacy"):
+                return "privacy"
+        with col5:
+            if st.button("🚪 Logout"):
+                return "logout"
+        return None
+    
+    @staticmethod
+    def show_navigation_buttons():
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("➕ Aggiungi Spesa", use_container_width=True):
+                return "aggiungi_spesa"
+        with col2:
+            if st.button("🗂️ Gestisci Spese", use_container_width=True):
+                return "gestisci_spese"
+        return None
+    
+    @staticmethod
+    def show_month_year_selector():
+        col1, col2 = st.columns(2)
+        with col1:
+            mese = st.selectbox("Mese", range(1, 13), format_func=lambda x: calendar.month_name[x])
+        with col2:
+            anno = st.selectbox("Anno", range(2020, 2030), index=datetime.now().year - 2020)
+        return mese, anno
+    
+    @staticmethod
+    def show_metrics(totale_giornaliere, totale_ricorrenti, totale):
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Spese Giornaliere", f"€{totale_giornaliere:.2f}")
+        with col2:
+            st.metric("Spese Ricorrenti", f"€{totale_ricorrenti:.2f}")
+        with col3:
+            st.metric("Totale Mese", f"€{totale:.2f}")
+    
+    @staticmethod
+    def show_sidebar_info(username, conti):
+        st.sidebar.markdown("---")
+        st.sidebar.subheader("📊 Info Account")
+        st.sidebar.write(f"👤 **Username:** {username}")
+        st.sidebar.write(f"🏦 **Conti configurati:** {len(conti)}")
+        
+        if len(conti) == 0:
+            if st.sidebar.button("🏦 Configura il tuo primo conto"):
+                return "configura_conti"
+        
+        st.sidebar.markdown("---")
+        st.sidebar.subheader("🛡️ Privacy & Sicurezza")
+        if st.sidebar.button("📄 Dettagli Privacy"):
+            return "dettagli_privacy"
+        
+        return None
+
+class StateManager:
+    """Placeholder - copia la tua classe originale qui"""
+    @staticmethod
+    def clear_user_session():
+        keys_to_clear = ['authenticated', 'username', 'display_username', 
+                        'spese_giornaliere', 'spese_ricorrenti', 'conti']
+        for key in keys_to_clear:
+            if key in st.session_state:
+                del st.session_state[key]
+    
+    @staticmethod
+    def reset_form_fields():
+        # Reset dei campi form se necessario
+        pass
+
+class LoginForm:
+    """Placeholder - copia la tua classe originale qui"""
+    @staticmethod
+    def show_login_form():
+        st.title("🔐 Accesso - Gestione Spese")
+        
+        tab1, tab2 = st.tabs(["🔑 Login", "📝 Registrazione"])
+        
+        with tab1:
+            LoginForm._show_login_tab()
+        
+        with tab2:
+            LoginForm._show_registration_tab()
+    
+    @staticmethod
+    def _show_login_tab():
+        with st.form("login_form"):
+            username = st.text_input("Email")
+            password = st.text_input("Password", type="password")
+            submitted = st.form_submit_button("Accedi")
+        
+        if submitted:
+            if LoginAttemptTracker.is_locked_out(username):
+                st.error("Account temporaneamente bloccato per troppi tentativi falliti")
+                return
+            
+            success, display_name = UserAuthenticator.authenticate_user(username, password)
+            if success:
+                LoginAttemptTracker.reset_attempts(username)
+                st.session_state.authenticated = True
+                st.session_state.username = username
+                st.session_state.display_username = display_name
+                st.session_state.last_activity = datetime.now()
+                st.success("Login effettuato con successo!")
+                st.rerun()
+            else:
+                LoginAttemptTracker.record_failed_attempt(username)
+                st.error("Credenziali non valide")
+    
+    @staticmethod
+    def _show_registration_tab():
+        with st.form("registration_form"):
+            email = st.text_input("Email")
+            display_name = st.text_input("Nome visualizzato (opzionale)")
+            password = st.text_input(
+                "Password", 
+                type="password",
+                help=f"Minimo {SecurityConfig.MIN_PASSWORD_LENGTH} caratteri con lettere maiuscole, minuscole, numeri e caratteri speciali."
+            )
+            confirm_password = st.text_input("Conferma Password", type="password")
+            submitted = st.form_submit_button("Registrati")
+        
+        if submitted:
+            if password != confirm_password:
+                st.error("Le password non coincidono")
+                return
+            
+            success, message = UserAuthenticator.register_user(email, password, display_name)
+            if success:
+                st.success(message)
+                st.info("Ora puoi effettuare il login con le tue credenziali")
+            else:
+                st.error(message)
