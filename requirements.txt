@@ -1,7 +1,8 @@
-
 streamlit
 pandas
 plotly
 requests-oauthlib
 google-auth
 google-auth-oauthlib
+psycopg2-binary
+bcrypt
