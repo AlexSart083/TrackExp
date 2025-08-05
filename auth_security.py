@@ -37,15 +37,18 @@ class UserAuthenticator:
     
     @staticmethod
     def register_user(username, password, display_name=None):
-        """Registra nuovo utente nel database"""
+        """Registra nuovo utente nel database - versione compatibile"""
         try:
             # Validazione input
             if not username or not password:
                 return False, "Username e password sono obbligatori"
             
-            # Validazione email
-            if not re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', username):
-                return False, "Formato email non valido"
+            # Sanitizza username
+            username_clean = username.strip().lower()
+            
+            # Validazione username
+            if len(username_clean) < 3:
+                return False, "Username deve essere lungo almeno 3 caratteri"
             
             # Validazione forza password
             is_strong, message = PasswordManager.is_strong_password(password)
@@ -55,35 +58,47 @@ class UserAuthenticator:
             # Salva nel database
             db = SupabaseDatabaseManager()
             password_hash = PasswordManager.hash_password(password)
-            success = db.save_user(username, password_hash, display_name)
+            
+            # Usa username originale come display_name se non fornito
+            if not display_name:
+                display_name = username
+            
+            success = db.save_user(username_clean, password_hash, display_name)
             
             if success:
-                return True, "Utente registrato con successo!"
+                return True, "Registrazione completata con successo!"
             else:
-                return False, "Username già esistente"
+                return False, "Username già esistente. Scegli un username diverso."
                 
         except Exception as e:
             st.error(f"Errore registrazione: {e}")
-            return False, f"Errore: {e}"
+            return False, f"Errore durante la registrazione: {e}"
     
     @staticmethod
     def authenticate_user(username, password):
-        """Autentica utente dal database"""
+        """Autentica utente dal database - versione compatibile con ui_components.py"""
         try:
             if not username or not password:
-                return False, None
+                return False, "Username e password sono obbligatori"
+            
+            # Sanitizza username
+            username_clean = username.strip().lower()
             
             db = SupabaseDatabaseManager()
-            user = db.get_user(username)
+            user = db.get_user(username_clean)
             
             if user and PasswordManager.verify_password(password, user['password_hash']):
-                return True, user['display_name']
+                # Reset dei tentativi falliti
+                LoginAttemptTracker.reset_attempts(username_clean)
+                return True, "Login effettuato con successo"
             else:
-                return False, None
+                # Registra tentativo fallito
+                LoginAttemptTracker.record_failed_attempt(username_clean)
+                return False, "Username o password non corretti"
                 
         except Exception as e:
             st.error(f"Errore autenticazione: {e}")
-            return False, None
+            return False, f"Errore di connessione: {e}"
     
     @staticmethod
     def change_password(username, current_password, new_password):
@@ -219,6 +234,28 @@ class LoginAttemptTracker:
                 return True, remaining_minutes
         
         return False, 0
+    
+    @staticmethod
+    def is_account_locked(username):
+        """Alias per compatibilità con ui_components.py"""
+        is_locked, remaining_time = LoginAttemptTracker.is_locked_out(username)
+        return is_locked, remaining_time
+    
+    @staticmethod
+    def load_login_attempts():
+        """Carica i tentativi di login per compatibilità"""
+        if 'login_attempts' not in st.session_state:
+            st.session_state.login_attempts = {}
+        
+        # Converti in formato compatibile
+        attempts_data = {}
+        for username, data in st.session_state.login_attempts.items():
+            attempts_data[username] = {
+                'failed_attempts': data.get('count', 0),
+                'lockout_time': data.get('lockout_time')
+            }
+        
+        return attempts_data
     
     @staticmethod
     def record_failed_attempt(username):
