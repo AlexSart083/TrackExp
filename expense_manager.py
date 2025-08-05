@@ -1,11 +1,5 @@
 """
-Modulo per la gestione delle spese e dei conti
-Contiene tutte le funzioni relative a:
-- Gestione spese giornaliere
-- Gestione spese ricorrenti
-- Gestione conti
-- Calcoli e filtri
-- Backup e restore
+Fixed expense_manager.py - Updated to work with database
 """
 
 import json
@@ -13,6 +7,7 @@ import os
 import pandas as pd
 from datetime import datetime
 from auth_security import FileManager
+from database_manager import SupabaseDatabaseManager
 
 class AccountManager:
     """Gestione dei conti di pagamento"""
@@ -51,9 +46,10 @@ class AccountManager:
     @staticmethod
     def get_conti_options(conti_list):
         """Restituisce le opzioni dei conti per i selectbox"""
-        if not conti_list:
-            return ["Nessun conto configurato"]
-        return [conto['nome'] for conto in conti_list]
+        options = ["Nessuno"]  # Opzione per nessun conto specificato
+        if conti_list:
+            options.extend([conto['nome'] for conto in conti_list])
+        return options
 
 class ExpenseManager:
     """Gestione delle spese"""
@@ -62,7 +58,7 @@ class ExpenseManager:
     def aggiungi_spesa_giornaliera(spese_list, data, categoria, descrizione, importo, conto=None):
         """Aggiunge una spesa giornaliera"""
         spesa = {
-            'data': data.strftime('%Y-%m-%d'),
+            'data': data.strftime('%Y-%m-%d') if hasattr(data, 'strftime') else str(data),
             'categoria': categoria,
             'descrizione': descrizione,
             'importo': float(importo),
@@ -120,9 +116,12 @@ class ExpenseCalculator:
         """Filtra le spese giornaliere per mese e anno"""
         spese_filtrate = []
         for spesa in spese_giornaliere:
-            data_spesa = datetime.strptime(spesa['data'], '%Y-%m-%d')
-            if data_spesa.month == mese and data_spesa.year == anno:
-                spese_filtrate.append(spesa)
+            try:
+                data_spesa = datetime.strptime(spesa['data'], '%Y-%m-%d')
+                if data_spesa.month == mese and data_spesa.year == anno:
+                    spese_filtrate.append(spesa)
+            except (ValueError, KeyError):
+                continue  # Salta spese con date non valide
         return spese_filtrate
     
     @staticmethod
@@ -134,6 +133,8 @@ class ExpenseCalculator:
         spese_per_conto = {}
         for spesa in spese_mese:
             conto = spesa.get('conto', 'Non specificato')
+            if conto is None or conto == "Nessuno":
+                conto = 'Non specificato'
             if conto not in spese_per_conto:
                 spese_per_conto[conto] = {'giornaliere': 0, 'ricorrenti': 0}
             spese_per_conto[conto]['giornaliere'] += spesa['importo']
@@ -141,6 +142,8 @@ class ExpenseCalculator:
         # Aggiungi spese ricorrenti per conto
         for spesa in spese_ricorrenti:
             conto = spesa.get('conto', 'Non specificato')
+            if conto is None or conto == "Nessuno":
+                conto = 'Non specificato'
             if conto not in spese_per_conto:
                 spese_per_conto[conto] = {'giornaliere': 0, 'ricorrenti': 0}
             
@@ -155,40 +158,30 @@ class ExpenseCalculator:
         return spese_per_conto
 
 class DataManager:
-    """Gestione del salvataggio e caricamento dei dati"""
+    """Gestione del salvataggio e caricamento dei dati con database"""
     
     @staticmethod
     def salva_dati(username, spese_giornaliere, spese_ricorrenti, conti):
-        """Salva i dati in un file JSON specifico per utente"""
-        data_file = FileManager.get_user_data_file(username)
-        data = {
-            'spese_giornaliere': spese_giornaliere,
-            'spese_ricorrenti': spese_ricorrenti,
-            'conti': conti
-        }
+        """Salva i dati nel database"""
         try:
-            with open(data_file, 'w', encoding='utf-8') as f:
-                json.dump(data, f, ensure_ascii=False, indent=2, default=str)
+            db = SupabaseDatabaseManager()
+            success = db.save_expense_data(username, spese_giornaliere, spese_ricorrenti, conti)
+            if not success:
+                raise Exception("Errore durante il salvataggio nel database")
             return True
         except Exception as e:
             raise Exception(f"Errore nel salvataggio dei dati: {e}")
     
     @staticmethod
     def carica_dati(username):
-        """Carica i dati dal file JSON se esiste"""
-        data_file = FileManager.get_user_data_file(username)
-        if os.path.exists(data_file):
-            try:
-                with open(data_file, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
-                    return (
-                        data.get('spese_giornaliere', []),
-                        data.get('spese_ricorrenti', []),
-                        data.get('conti', [])
-                    )
-            except Exception as e:
-                raise Exception(f"Errore nel caricamento dei dati: {e}")
-        return [], [], []
+        """Carica i dati dal database"""
+        try:
+            db = SupabaseDatabaseManager()
+            return db.load_expense_data(username)
+        except Exception as e:
+            # In caso di errore, restituisce dati vuoti
+            print(f"Errore nel caricamento dei dati: {e}")
+            return [], [], []
     
     @staticmethod
     def carica_backup(file_content):
@@ -206,14 +199,18 @@ class DataManager:
     @staticmethod
     def esporta_dati_per_backup(username):
         """Esporta i dati per il backup"""
-        data_file = FileManager.get_user_data_file(username)
-        if os.path.exists(data_file):
-            try:
-                with open(data_file, 'r', encoding='utf-8') as f:
-                    return f.read()
-            except Exception as e:
-                raise Exception(f"Errore nell'esportazione del backup: {e}")
-        return None
+        try:
+            spese_g, spese_r, conti = DataManager.carica_dati(username)
+            data = {
+                'spese_giornaliere': spese_g,
+                'spese_ricorrenti': spese_r,
+                'conti': conti,
+                'export_date': datetime.now().isoformat(),
+                'username': username
+            }
+            return json.dumps(data, ensure_ascii=False, indent=2, default=str)
+        except Exception as e:
+            raise Exception(f"Errore nell'esportazione del backup: {e}")
 
 class ExpenseFormatter:
     """Formattazione e visualizzazione delle spese"""
@@ -225,7 +222,11 @@ class ExpenseFormatter:
             return pd.DataFrame()
         
         df = pd.DataFrame(spese_giornaliere)
-        df['data'] = pd.to_datetime(df['data']).dt.strftime('%d/%m/%Y')
+        try:
+            df['data'] = pd.to_datetime(df['data']).dt.strftime('%d/%m/%Y')
+        except:
+            # Se c'è un errore nella conversione delle date, mantieni il formato originale
+            pass
         
         # Riordina le colonne
         cols_order = ['data', 'categoria', 'descrizione', 'importo', 'conto']
@@ -234,6 +235,7 @@ class ExpenseFormatter:
         
         # Gestisci valori None per il conto
         df['Conto'] = df['Conto'].fillna('Non specificato')
+        df['Conto'] = df['Conto'].replace('Nessuno', 'Non specificato')
         
         return df
     
@@ -251,12 +253,16 @@ class ExpenseFormatter:
             elif spesa['frequenza'] == 'Annuale':
                 importo_mensile /= 12
             
+            conto_display = spesa.get('conto', 'Non specificato')
+            if conto_display is None or conto_display == "Nessuno":
+                conto_display = 'Non specificato'
+            
             ricorrenti_df.append({
                 'Nome': spesa['nome'],
                 'Categoria': spesa['categoria'],
                 'Importo Originale': f"€{spesa['importo']:.2f}",
                 'Frequenza': spesa['frequenza'],
-                'Conto': spesa.get('conto', 'Non specificato'),
+                'Conto': conto_display,
                 'Importo Mensile': f"€{importo_mensile:.2f}"
             })
         
@@ -295,20 +301,28 @@ class ExpenseFilter:
         if df.empty:
             return df
         
+        # Crea una copia del dataframe per evitare warnings
+        df_filtrato = df.copy()
+        
         # Filtro per categoria
-        df_filtrato = df[df['categoria'].isin(categorie_filtro)]
+        if categorie_filtro:
+            df_filtrato = df_filtrato[df_filtrato['categoria'].isin(categorie_filtro)]
         
         # Filtro per mese
         if mese_filtro != "Tutti":
-            import calendar
-            mese_num = list(calendar.month_name).index(mese_filtro)
-            df_filtrato = df_filtrato[
-                pd.to_datetime(df_filtrato['data'], format='%d/%m/%Y').dt.month == mese_num
-            ]
+            try:
+                import calendar
+                mese_num = list(calendar.month_name).index(mese_filtro)
+                df_filtrato = df_filtrato[
+                    pd.to_datetime(df_filtrato['data'], format='%d/%m/%Y').dt.month == mese_num
+                ]
+            except:
+                pass  # Se c'è un errore, ignora il filtro per mese
         
         # Filtro per conto
-        df_filtrato = df_filtrato[
-            df_filtrato['conto'].fillna('Non specificato').isin(conti_filtro)
-        ]
+        if conti_filtro:
+            df_filtrato = df_filtrato[
+                df_filtrato['conto'].fillna('Non specificato').isin(conti_filtro)
+            ]
         
         return df_filtrato
