@@ -2,6 +2,9 @@
 Modulo Auth Security per la Gestione Spese Mensili
 Gestisce autenticazione, sicurezza e sessioni
 """
+"""
+Fixed auth_security.py - Corrected database integration
+"""
 
 import streamlit as st
 import bcrypt
@@ -34,14 +37,15 @@ class UserAuthenticator:
             
             # Controlla se l'utente esiste già
             db = SupabaseDatabaseManager()
-            if db.user_exists(username):
+            existing_user = db.get_user(username)
+            if existing_user:
                 return False, "Username già esistente"
             
             # Hash password
             password_hash = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
             
-            # Crea l'utente
-            success = db.create_user(username, password_hash, display_name or username)
+            # Crea l'utente usando il metodo corretto
+            success = db.save_user(username, password_hash, display_name or username)
             
             if success:
                 return True, "Utente registrato con successo"
@@ -163,7 +167,7 @@ class SessionManager:
         return int(remaining_seconds / 60)
 
 class FileManager:
-    """Gestione dei file (placeholder per future funzionalità)"""
+    """Gestione dei file"""
     
     @staticmethod
     def sanitize_filename(filename):
@@ -171,6 +175,13 @@ class FileManager:
         # Rimuove caratteri non sicuri
         filename = re.sub(r'[^\w\-_\.]', '_', filename)
         return filename[:50]  # Limita lunghezza
+    
+    @staticmethod
+    def get_user_data_file(username):
+        """Ottiene il percorso del file dati utente (non più utilizzato con database)"""
+        # Mantenuto per compatibilità con il codice esistente
+        safe_username = FileManager.sanitize_filename(username)
+        return f"data_{safe_username}.json"
 
 class LoginAttemptTracker:
     """Tracciamento tentativi di login"""
